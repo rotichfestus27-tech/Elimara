@@ -1,0 +1,954 @@
+openapi: 3.1.0
+info:
+  title: Elimara School Configuration API
+  version: 1.0.0
+  description: >
+    Phase 03 school profile and academic configuration endpoints.
+    The contract is published for joint frontend/backend review and is not
+    yet an approved shared package contract.
+servers:
+  - url: /api/v1
+security:
+  - sessionCookie: []
+paths:
+  /schools/{schoolId}:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+    get:
+      operationId: getSchoolProfile
+      summary: Read the authorized school profile
+      description: Requires school.profile.read.
+      responses:
+        "200":
+          description: School profile.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/SchoolProfile"
+        default:
+          $ref: "#/components/responses/ApiError"
+    patch:
+      operationId: updateSchoolProfile
+      summary: Update school profile fields
+      description: Requires school.profile.update and a valid CSRF token.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SchoolProfileUpdate"
+      responses:
+        "200":
+          description: Updated school profile.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/SchoolProfile"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/academic-years:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+    get:
+      operationId: listAcademicYears
+      summary: List academic years
+      description: Requires academics.configuration.read.
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Status"
+        - $ref: "#/components/parameters/Search"
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [name, startsOn, endsOn, createdAt]
+            default: startsOn
+        - $ref: "#/components/parameters/SortOrder"
+      responses:
+        "200":
+          $ref: "#/components/responses/AcademicYearPage"
+        default:
+          $ref: "#/components/responses/ApiError"
+    post:
+      operationId: createAcademicYear
+      summary: Create an academic year
+      description: Requires academics.configuration.manage and a valid CSRF token.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PeriodCreate"
+      responses:
+        "201":
+          $ref: "#/components/responses/AcademicYear"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/academic-years/{id}:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+      - $ref: "#/components/parameters/RecordId"
+    get:
+      operationId: getAcademicYear
+      summary: Read an academic year
+      responses:
+        "200":
+          $ref: "#/components/responses/AcademicYear"
+        default:
+          $ref: "#/components/responses/ApiError"
+    patch:
+      operationId: updateAcademicYear
+      summary: Update an academic year
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PeriodUpdate"
+      responses:
+        "200":
+          $ref: "#/components/responses/AcademicYear"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/academic-years/{id}/deactivate:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+      - $ref: "#/components/parameters/RecordId"
+    post:
+      operationId: deactivateAcademicYear
+      summary: Deactivate an academic year
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: Deactivated, or already inactive.
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/terms:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+    get:
+      operationId: listTerms
+      summary: List terms in an academic year
+      parameters:
+        - name: academicYearId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Status"
+        - $ref: "#/components/parameters/Search"
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [name, startsOn, endsOn, createdAt]
+            default: startsOn
+        - $ref: "#/components/parameters/SortOrder"
+      responses:
+        "200":
+          $ref: "#/components/responses/TermPage"
+        default:
+          $ref: "#/components/responses/ApiError"
+    post:
+      operationId: createTerm
+      summary: Create a term within an academic year
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TermCreate"
+      responses:
+        "201":
+          $ref: "#/components/responses/Term"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/terms/{id}:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+      - $ref: "#/components/parameters/RecordId"
+    get:
+      operationId: getTerm
+      summary: Read a term
+      responses:
+        "200":
+          $ref: "#/components/responses/Term"
+        default:
+          $ref: "#/components/responses/ApiError"
+    patch:
+      operationId: updateTerm
+      summary: Update a term
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PeriodUpdate"
+      responses:
+        "200":
+          $ref: "#/components/responses/Term"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/terms/{id}/deactivate:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+      - $ref: "#/components/parameters/RecordId"
+    post:
+      operationId: deactivateTerm
+      summary: Deactivate a term
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: Deactivated, or already inactive.
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/classes:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+    get:
+      operationId: listClasses
+      summary: List classes in an academic year
+      parameters:
+        - name: academicYearId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Status"
+        - $ref: "#/components/parameters/Search"
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [name, createdAt]
+            default: name
+        - $ref: "#/components/parameters/SortOrder"
+      responses:
+        "200":
+          $ref: "#/components/responses/ClassPage"
+        default:
+          $ref: "#/components/responses/ApiError"
+    post:
+      operationId: createClass
+      summary: Create a class in an academic year
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClassCreate"
+      responses:
+        "201":
+          $ref: "#/components/responses/Class"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/classes/{id}:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+      - $ref: "#/components/parameters/RecordId"
+    get:
+      operationId: getClass
+      summary: Read a class
+      responses:
+        "200":
+          $ref: "#/components/responses/Class"
+        default:
+          $ref: "#/components/responses/ApiError"
+    patch:
+      operationId: updateClass
+      summary: Rename a class
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcademicNameUpdate"
+      responses:
+        "200":
+          $ref: "#/components/responses/Class"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/classes/{id}/deactivate:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+      - $ref: "#/components/parameters/RecordId"
+    post:
+      operationId: deactivateClass
+      summary: Deactivate a class
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: Deactivated, or already inactive.
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/streams:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+    get:
+      operationId: listStreams
+      summary: List streams in a class
+      parameters:
+        - name: classId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Status"
+        - $ref: "#/components/parameters/Search"
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [name, createdAt]
+            default: name
+        - $ref: "#/components/parameters/SortOrder"
+      responses:
+        "200":
+          $ref: "#/components/responses/StreamPage"
+        default:
+          $ref: "#/components/responses/ApiError"
+    post:
+      operationId: createStream
+      summary: Create a stream in a class
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StreamCreate"
+      responses:
+        "201":
+          $ref: "#/components/responses/Stream"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/streams/{id}:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+      - $ref: "#/components/parameters/RecordId"
+    get:
+      operationId: getStream
+      summary: Read a stream
+      responses:
+        "200":
+          $ref: "#/components/responses/Stream"
+        default:
+          $ref: "#/components/responses/ApiError"
+    patch:
+      operationId: updateStream
+      summary: Rename a stream
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcademicNameUpdate"
+      responses:
+        "200":
+          $ref: "#/components/responses/Stream"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/streams/{id}/deactivate:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+      - $ref: "#/components/parameters/RecordId"
+    post:
+      operationId: deactivateStream
+      summary: Deactivate a stream
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: Deactivated, or already inactive.
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/subjects:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+    get:
+      operationId: listSubjects
+      summary: List school subjects
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Status"
+        - $ref: "#/components/parameters/Search"
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [name, createdAt]
+            default: name
+        - $ref: "#/components/parameters/SortOrder"
+      responses:
+        "200":
+          $ref: "#/components/responses/SubjectPage"
+        default:
+          $ref: "#/components/responses/ApiError"
+    post:
+      operationId: createSubject
+      summary: Create a school subject
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NameCreate"
+      responses:
+        "201":
+          $ref: "#/components/responses/Subject"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/subjects/{id}:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+      - $ref: "#/components/parameters/RecordId"
+    get:
+      operationId: getSubject
+      summary: Read a subject
+      responses:
+        "200":
+          $ref: "#/components/responses/Subject"
+        default:
+          $ref: "#/components/responses/ApiError"
+    patch:
+      operationId: updateSubject
+      summary: Rename a subject
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NameUpdate"
+      responses:
+        "200":
+          $ref: "#/components/responses/Subject"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/subjects/{id}/deactivate:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+      - $ref: "#/components/parameters/RecordId"
+    post:
+      operationId: deactivateSubject
+      summary: Deactivate a subject
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: Deactivated, or already inactive.
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/class-subjects:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+    get:
+      operationId: listClassSubjects
+      summary: List subjects assigned to a class
+      parameters:
+        - name: classId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Status"
+        - $ref: "#/components/parameters/Search"
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [createdAt, status]
+            default: createdAt
+        - $ref: "#/components/parameters/SortOrder"
+      responses:
+        "200":
+          $ref: "#/components/responses/ClassSubjectPage"
+        default:
+          $ref: "#/components/responses/ApiError"
+    post:
+      operationId: assignSubjectToClass
+      summary: Assign a subject to a class
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClassSubjectCreate"
+      responses:
+        "201":
+          $ref: "#/components/responses/ClassSubject"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/class-subjects/{id}:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+      - $ref: "#/components/parameters/RecordId"
+    get:
+      operationId: getClassSubject
+      summary: Read a class-subject assignment
+      responses:
+        "200":
+          $ref: "#/components/responses/ClassSubject"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/class-subjects/{id}/deactivate:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+      - $ref: "#/components/parameters/RecordId"
+    post:
+      operationId: deactivateClassSubject
+      summary: Deactivate a class-subject assignment
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: Deactivated, or already inactive.
+        default:
+          $ref: "#/components/responses/ApiError"
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: elimara_session
+      description: Opaque HttpOnly session cookie. The deployed cookie name is configurable.
+  parameters:
+    SchoolId:
+      name: schoolId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    RecordId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    CsrfToken:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      schema:
+        type: string
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 25
+    Offset:
+      name: offset
+      in: query
+      schema:
+        type: integer
+        minimum: 0
+        maximum: 1000000
+        default: 0
+    Status:
+      name: status
+      in: query
+      schema:
+        type: string
+        enum: [ACTIVE, INACTIVE]
+    Search:
+      name: q
+      in: query
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 100
+    SortOrder:
+      name: sortOrder
+      in: query
+      schema:
+        type: string
+        enum: [asc, desc]
+        default: asc
+  responses:
+    ApiError:
+      description: Authentication, authorization, validation, not-found, conflict, or server error.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+    AcademicYear:
+      description: Academic year record.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/AcademicYear"
+    Term:
+      description: Term record.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/Term"
+    Class:
+      description: Academic class record.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/AcademicClass"
+    Stream:
+      description: Class stream record.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/ClassStream"
+    Subject:
+      description: Subject record.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/Subject"
+    ClassSubject:
+      description: Class-subject assignment record.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/ClassSubjectAssignment"
+    AcademicYearPage:
+      description: Paginated academic years.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/AcademicYearPage"
+    TermPage:
+      description: Paginated terms.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/TermPage"
+    ClassPage:
+      description: Paginated classes.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ClassPage"
+    StreamPage:
+      description: Paginated streams.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/StreamPage"
+    SubjectPage:
+      description: Paginated subjects.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/SubjectPage"
+    ClassSubjectPage:
+      description: Paginated class-subject assignments.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ClassSubjectPage"
+  schemas:
+    SchoolProfile:
+      type: object
+      required: [id, name, contactEmail, contactPhone, status, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, maxLength: 200 }
+        contactEmail: { type: [string, "null"], format: email, maxLength: 320 }
+        contactPhone: { type: [string, "null"], maxLength: 40 }
+        status: { type: string, enum: [ACTIVE, SUSPENDED, CLOSED] }
+        updatedAt: { type: string, format: date-time }
+    SchoolProfileUpdate:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        contactEmail: { type: [string, "null"], format: email, maxLength: 320 }
+        contactPhone: { type: [string, "null"], minLength: 7, maxLength: 40 }
+    PeriodCreate:
+      type: object
+      required: [name, startsOn, endsOn]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        startsOn: { type: string, format: date }
+        endsOn: { type: string, format: date }
+    PeriodUpdate:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        startsOn: { type: string, format: date }
+        endsOn: { type: string, format: date }
+    TermCreate:
+      type: object
+      required: [name, startsOn, endsOn, academicYearId]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        startsOn: { type: string, format: date }
+        endsOn: { type: string, format: date }
+        academicYearId: { type: string, format: uuid }
+    ClassCreate:
+      type: object
+      required: [academicYearId, name]
+      additionalProperties: false
+      properties:
+        academicYearId: { type: string, format: uuid }
+        name: { type: string, minLength: 1, maxLength: 100 }
+    StreamCreate:
+      type: object
+      required: [classId, name]
+      additionalProperties: false
+      properties:
+        classId: { type: string, format: uuid }
+        name: { type: string, minLength: 1, maxLength: 100 }
+    NameCreate:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+    NameUpdate:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+    AcademicNameUpdate:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+    ClassSubjectCreate:
+      type: object
+      required: [classId, subjectId]
+      additionalProperties: false
+      properties:
+        classId: { type: string, format: uuid }
+        subjectId: { type: string, format: uuid }
+    AcademicYear:
+      allOf:
+        - $ref: "#/components/schemas/PeriodRecord"
+    Term:
+      allOf:
+        - $ref: "#/components/schemas/PeriodRecord"
+        - type: object
+          required: [academicYearId]
+          properties:
+            academicYearId: { type: string, format: uuid }
+    PeriodRecord:
+      type: object
+      required: [id, name, startsOn, endsOn, status, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        startsOn: { type: string, format: date }
+        endsOn: { type: string, format: date }
+        status: { type: string, enum: [ACTIVE, INACTIVE] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    AcademicClass:
+      allOf:
+        - $ref: "#/components/schemas/NamedRecord"
+        - type: object
+          required: [academicYearId]
+          properties:
+            academicYearId: { type: string, format: uuid }
+    ClassStream:
+      allOf:
+        - $ref: "#/components/schemas/NamedRecord"
+        - type: object
+          required: [classId]
+          properties:
+            classId: { type: string, format: uuid }
+    Subject:
+      $ref: "#/components/schemas/NamedRecord"
+    NamedRecord:
+      type: object
+      required: [id, name, status, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        status: { type: string, enum: [ACTIVE, INACTIVE] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ClassSubjectAssignment:
+      type: object
+      required: [id, classId, subjectId, status, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        classId: { type: string, format: uuid }
+        subjectId: { type: string, format: uuid }
+        status: { type: string, enum: [ACTIVE, INACTIVE] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    PageMeta:
+      type: object
+      required: [limit, offset, total]
+      properties:
+        limit: { type: integer }
+        offset: { type: integer }
+        total: { type: integer }
+    AcademicYearPage:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/AcademicYear" }
+        meta: { $ref: "#/components/schemas/PageMeta" }
+    TermPage:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Term" }
+        meta: { $ref: "#/components/schemas/PageMeta" }
+    ClassPage:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/AcademicClass" }
+        meta: { $ref: "#/components/schemas/PageMeta" }
+    StreamPage:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/ClassStream" }
+        meta: { $ref: "#/components/schemas/PageMeta" }
+    SubjectPage:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Subject" }
+        meta: { $ref: "#/components/schemas/PageMeta" }
+    ClassSubjectPage:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/ClassSubjectAssignment" }
+        meta: { $ref: "#/components/schemas/PageMeta" }
+    ApiError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, requestId]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            requestId: { type: string }
+            issues:
+              type: array
+              items:
+                type: object
+                required: [path, code, message]
+                properties:
+                  path: { type: string }
+                  code: { type: string }
+                  message: { type: string }

@@ -1,0 +1,1016 @@
+openapi: 3.1.0
+info:
+  title: Elimara Library API
+  version: 1.0.0
+  description: >
+    Proposed school-wide Library v1 contract. Role grants are not seeded;
+    frontend/backend review is pending. See library.md for workflows and
+    deferred scope.
+servers:
+  - url: /api/v1
+security:
+  - sessionCookie: []
+paths:
+  /schools/{schoolId}/library/categories:
+    get:
+      operationId: listLibraryCategories
+      parameters:
+        - $ref: "#/components/parameters/SchoolId"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/IncludeArchived"
+      responses:
+        "200":
+          description: Paginated categories.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CategoryPageResponse"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: createLibraryCategory
+      parameters:
+        - $ref: "#/components/parameters/SchoolId"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCategory"
+      responses:
+        "201":
+          description: Category created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CategoryResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /schools/{schoolId}/library/categories/{categoryId}/archive:
+    post:
+      operationId: archiveLibraryCategory
+      parameters:
+        - $ref: "#/components/parameters/SchoolId"
+        - $ref: "#/components/parameters/CategoryId"
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: Category archived.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /schools/{schoolId}/library/catalog/items:
+    get:
+      operationId: listLibraryItems
+      parameters:
+        - $ref: "#/components/parameters/SchoolId"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/IncludeArchived"
+        - $ref: "#/components/parameters/CategoryIdFilter"
+        - $ref: "#/components/parameters/Search"
+      responses:
+        "200":
+          description: Paginated catalog titles.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ItemPageResponse"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: createLibraryItem
+      parameters:
+        - $ref: "#/components/parameters/SchoolId"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateItem"
+      responses:
+        "201":
+          description: Catalog title created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ItemResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /schools/{schoolId}/library/catalog/items/{itemId}:
+    get:
+      operationId: getLibraryItem
+      parameters:
+        - $ref: "#/components/parameters/SchoolId"
+        - $ref: "#/components/parameters/ItemId"
+      responses:
+        "200":
+          description: Catalog title.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ItemResponse"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateLibraryItem
+      parameters:
+        - $ref: "#/components/parameters/SchoolId"
+        - $ref: "#/components/parameters/ItemId"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateItem"
+      responses:
+        "200":
+          description: Updated catalog title.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ItemResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /schools/{schoolId}/library/catalog/items/{itemId}/archive:
+    post:
+      operationId: archiveLibraryItem
+      parameters:
+        - $ref: "#/components/parameters/SchoolId"
+        - $ref: "#/components/parameters/ItemId"
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: Title and its copies archived.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /schools/{schoolId}/library/catalog/items/{itemId}/copies:
+    get:
+      operationId: listLibraryCopies
+      parameters:
+        - $ref: "#/components/parameters/SchoolId"
+        - $ref: "#/components/parameters/ItemId"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/IncludeArchived"
+      responses:
+        "200":
+          description: Paginated physical copies.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CopyPageResponse"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: createLibraryCopy
+      parameters:
+        - $ref: "#/components/parameters/SchoolId"
+        - $ref: "#/components/parameters/ItemId"
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "201":
+          description: Physical copy created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CopyResponse"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /schools/{schoolId}/library/catalog/items/{itemId}/copies/{copyId}/archive:
+    post:
+      operationId: archiveLibraryCopy
+      parameters:
+        - $ref: "#/components/parameters/SchoolId"
+        - $ref: "#/components/parameters/ItemId"
+        - $ref: "#/components/parameters/CopyId"
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: Copy archived.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /schools/{schoolId}/library/policy:
+    get:
+      operationId: getLibraryPolicy
+      parameters:
+        - $ref: "#/components/parameters/SchoolId"
+      responses:
+        "200":
+          description: Existing policy, or null before configuration.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicyResponse"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    put:
+      operationId: setLibraryPolicy
+      parameters:
+        - $ref: "#/components/parameters/SchoolId"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetPolicy"
+      responses:
+        "200":
+          description: Saved school-wide policy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicyResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /schools/{schoolId}/library/loans:
+    get:
+      operationId: listLibraryLoans
+      parameters:
+        - $ref: "#/components/parameters/SchoolId"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/ItemIdFilter"
+        - $ref: "#/components/parameters/StudentIdFilter"
+        - $ref: "#/components/parameters/StaffIdFilter"
+        - $ref: "#/components/parameters/LoanStatus"
+      responses:
+        "200":
+          description: Paginated loan history.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoanPageResponse"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      operationId: checkoutLibraryCopy
+      parameters:
+        - $ref: "#/components/parameters/SchoolId"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Checkout"
+      responses:
+        "201":
+          description: Copy checked out.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoanResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /schools/{schoolId}/library/loans/{loanId}/return:
+    post:
+      operationId: returnLibraryLoan
+      parameters:
+        - $ref: "#/components/parameters/SchoolId"
+        - $ref: "#/components/parameters/LoanId"
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "200":
+          description: Returned loan record.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoanResponse"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /schools/{schoolId}/library/loans/{loanId}/renew:
+    post:
+      operationId: renewLibraryLoan
+      parameters:
+        - $ref: "#/components/parameters/SchoolId"
+        - $ref: "#/components/parameters/LoanId"
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "200":
+          description: Renewed loan record.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoanResponse"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /schools/{schoolId}/library/reservations:
+    get:
+      operationId: listLibraryReservations
+      parameters:
+        - $ref: "#/components/parameters/SchoolId"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/ItemIdFilter"
+        - $ref: "#/components/parameters/StudentIdFilter"
+        - $ref: "#/components/parameters/StaffIdFilter"
+        - $ref: "#/components/parameters/ReservationStatus"
+      responses:
+        "200":
+          description: Paginated reservation history.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReservationPageResponse"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      operationId: createLibraryReservation
+      parameters:
+        - $ref: "#/components/parameters/SchoolId"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReservation"
+      responses:
+        "201":
+          description: Created or queued reservation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReservationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /schools/{schoolId}/library/reservations/{reservationId}/cancel:
+    post:
+      operationId: cancelLibraryReservation
+      parameters:
+        - $ref: "#/components/parameters/SchoolId"
+        - $ref: "#/components/parameters/ReservationId"
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "200":
+          description: Cancelled reservation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReservationResponse"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /schools/{schoolId}/library/reports/loans:
+    get:
+      operationId: getLibraryLoanReport
+      parameters:
+        - $ref: "#/components/parameters/SchoolId"
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Inclusive checkout-period loan summary.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/LoanReport"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: elimara_session
+  parameters:
+    SchoolId:
+      name: schoolId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: School selector; authorization is derived from authenticated membership.
+    CategoryId:
+      name: categoryId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ItemId:
+      name: itemId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    CopyId:
+      name: copyId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    LoanId:
+      name: loanId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ReservationId:
+      name: reservationId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 25
+    Offset:
+      name: offset
+      in: query
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+    IncludeArchived:
+      name: includeArchived
+      in: query
+      schema:
+        type: boolean
+        default: false
+    CategoryIdFilter:
+      name: categoryId
+      in: query
+      schema:
+        type: string
+        format: uuid
+    Search:
+      name: search
+      in: query
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 120
+    ItemIdFilter:
+      name: itemId
+      in: query
+      schema:
+        type: string
+        format: uuid
+    StudentIdFilter:
+      name: studentId
+      in: query
+      schema:
+        type: string
+        format: uuid
+    StaffIdFilter:
+      name: staffId
+      in: query
+      schema:
+        type: string
+        format: uuid
+    LoanStatus:
+      name: status
+      in: query
+      schema:
+        type: string
+        enum: [ACTIVE, RETURNED, ALL]
+        default: ALL
+    ReservationStatus:
+      name: status
+      in: query
+      schema:
+        $ref: "#/components/schemas/ReservationStatus"
+    CsrfToken:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      schema:
+        type: string
+  schemas:
+    Category:
+      type: object
+      required: [id, name, archivedAt, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        archivedAt:
+          type: [string, "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    Item:
+      type: object
+      required: [id, title, author, isbn, categoryId, archivedAt, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        author:
+          type: [string, "null"]
+        isbn:
+          type: [string, "null"]
+        categoryId:
+          type: [string, "null"]
+          format: uuid
+        archivedAt:
+          type: [string, "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    Copy:
+      type: object
+      required: [id, itemId, archivedAt, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        itemId:
+          type: string
+          format: uuid
+        archivedAt:
+          type: [string, "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    Policy:
+      type: object
+      required: [loanPeriodDays, maxActiveLoans, maxRenewals, reservationHoldDays, updatedAt]
+      properties:
+        loanPeriodDays:
+          type: integer
+          minimum: 1
+        maxActiveLoans:
+          type: integer
+          minimum: 1
+        maxRenewals:
+          type: integer
+          minimum: 0
+        reservationHoldDays:
+          type: integer
+          minimum: 1
+        updatedAt:
+          type: string
+          format: date-time
+    Loan:
+      type: object
+      required: [id, itemId, copyId, studentId, staffId, checkedOutAt, dueOn, returnedAt, renewalCount]
+      properties:
+        id:
+          type: string
+          format: uuid
+        itemId:
+          type: string
+          format: uuid
+        copyId:
+          type: string
+          format: uuid
+        studentId:
+          type: [string, "null"]
+          format: uuid
+        staffId:
+          type: [string, "null"]
+          format: uuid
+        checkedOutAt:
+          type: string
+          format: date-time
+        dueOn:
+          type: string
+          format: date
+        returnedAt:
+          type: [string, "null"]
+          format: date-time
+        renewalCount:
+          type: integer
+          minimum: 0
+    ReservationStatus:
+      type: string
+      enum: [QUEUED, READY, FULFILLED, CANCELLED, EXPIRED]
+    Reservation:
+      type: object
+      required: [id, itemId, copyId, studentId, staffId, status, readyAt, expiresAt, completedAt, createdAt, expired, effectiveStatus]
+      properties:
+        id:
+          type: string
+          format: uuid
+        itemId:
+          type: string
+          format: uuid
+        copyId:
+          type: [string, "null"]
+          format: uuid
+        studentId:
+          type: [string, "null"]
+          format: uuid
+        staffId:
+          type: [string, "null"]
+          format: uuid
+        status:
+          $ref: "#/components/schemas/ReservationStatus"
+        readyAt:
+          type: [string, "null"]
+          format: date-time
+        expiresAt:
+          type: [string, "null"]
+          format: date-time
+        completedAt:
+          type: [string, "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        expired:
+          type: boolean
+        effectiveStatus:
+          $ref: "#/components/schemas/ReservationStatus"
+    LoanReport:
+      type: object
+      required: [checkedOut, active, returned, overdue]
+      properties:
+        checkedOut:
+          type: integer
+          minimum: 0
+        active:
+          type: integer
+          minimum: 0
+        returned:
+          type: integer
+          minimum: 0
+        overdue:
+          type: integer
+          minimum: 0
+    PageMeta:
+      type: object
+      required: [limit, offset, total]
+      properties:
+        limit:
+          type: integer
+        offset:
+          type: integer
+        total:
+          type: integer
+    CreateCategory:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+    CreateItem:
+      type: object
+      additionalProperties: false
+      required: [title]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 240
+        author:
+          type: [string, "null"]
+          maxLength: 240
+        isbn:
+          type: [string, "null"]
+          maxLength: 24
+        categoryId:
+          type: [string, "null"]
+          format: uuid
+    UpdateItem:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 240
+        author:
+          type: [string, "null"]
+          maxLength: 240
+        isbn:
+          type: [string, "null"]
+          maxLength: 24
+        categoryId:
+          type: [string, "null"]
+          format: uuid
+    SetPolicy:
+      type: object
+      additionalProperties: false
+      required: [loanPeriodDays, maxActiveLoans, maxRenewals, reservationHoldDays]
+      properties:
+        loanPeriodDays:
+          type: integer
+          minimum: 1
+        maxActiveLoans:
+          type: integer
+          minimum: 1
+        maxRenewals:
+          type: integer
+          minimum: 0
+        reservationHoldDays:
+          type: integer
+          minimum: 1
+    Borrower:
+      type: object
+      additionalProperties: false
+      properties:
+        studentId:
+          type: string
+          format: uuid
+        staffId:
+          type: string
+          format: uuid
+      oneOf:
+        - required: [studentId]
+        - required: [staffId]
+    Checkout:
+      allOf:
+        - $ref: "#/components/schemas/Borrower"
+        - type: object
+          required: [copyId]
+          properties:
+            copyId:
+              type: string
+              format: uuid
+    CreateReservation:
+      allOf:
+        - $ref: "#/components/schemas/Borrower"
+        - type: object
+          required: [itemId]
+          properties:
+            itemId:
+              type: string
+              format: uuid
+    CategoryResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/Category"
+    CategoryPageResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Category"
+        meta:
+          $ref: "#/components/schemas/PageMeta"
+    ItemResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/Item"
+    ItemPageResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Item"
+        meta:
+          $ref: "#/components/schemas/PageMeta"
+    CopyResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/Copy"
+    CopyPageResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Copy"
+        meta:
+          $ref: "#/components/schemas/PageMeta"
+    PolicyResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          oneOf:
+            - $ref: "#/components/schemas/Policy"
+            - type: "null"
+    LoanResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/Loan"
+    LoanPageResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Loan"
+        meta:
+          $ref: "#/components/schemas/PageMeta"
+    ReservationResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/Reservation"
+    ReservationPageResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Reservation"
+        meta:
+          $ref: "#/components/schemas/PageMeta"
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, requestId]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            requestId:
+              type: string
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          $ref: "#/components/schemas/Error/properties/error"
+  responses:
+    BadRequest:
+      description: Validation failure.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthenticated:
+      description: Authentication required.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: Missing permission or CSRF verification.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Resource not found in the authorized school scope.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Conflict:
+      description: Duplicate or invalid library state transition.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"

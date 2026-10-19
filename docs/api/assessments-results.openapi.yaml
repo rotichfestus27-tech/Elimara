@@ -1,0 +1,464 @@
+openapi: 3.1.0
+info:
+  title: Elimara Assessments and Results API
+  version: 1.0.0
+  description: Phase 07 contract proposal. Permissions require approved grants; no role grants are seeded.
+servers:
+  - url: /api/v1
+security:
+  - sessionCookie: []
+paths:
+  /schools/{schoolId}/grading-scales:
+    get:
+      operationId: listGradingScales
+      description: Requires assessments.read.
+      parameters: [{$ref: '#/components/parameters/schoolId'}]
+      responses:
+        '200': {$ref: '#/components/responses/ScaleList'}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+    post:
+      operationId: createGradingScale
+      description: Requires assessments.manage. Bands must completely cover 0 through 100 without gaps or overlaps.
+      parameters: [{$ref: '#/components/parameters/schoolId'}, {$ref: '#/components/parameters/csrf'}]
+      requestBody: {$ref: '#/components/requestBodies/GradingScale'}
+      responses:
+        '201': {$ref: '#/components/responses/Scale'}
+        '400': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+  /schools/{schoolId}/grading-scales/{gradingScaleId}/deactivate:
+    post:
+      operationId: deactivateGradingScale
+      description: Requires assessments.manage. Scales used by unpublished assessments cannot be deactivated.
+      parameters: [{$ref: '#/components/parameters/schoolId'}, {$ref: '#/components/parameters/gradingScaleId'}, {$ref: '#/components/parameters/csrf'}]
+      responses:
+        '204': {description: Grading scale deactivated}
+        '404': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+  /schools/{schoolId}/assessments:
+    get:
+      operationId: listAssessments
+      description: Requires assessments.read. Includes eligible, entered, and missing mark counts.
+      parameters:
+        - {$ref: '#/components/parameters/schoolId'}
+        - {$ref: '#/components/parameters/academicYearIdQuery'}
+        - {$ref: '#/components/parameters/termIdQuery'}
+        - {$ref: '#/components/parameters/classIdQuery'}
+        - {name: status, in: query, schema: {$ref: '#/components/schemas/AssessmentStatus'}}
+        - {$ref: '#/components/parameters/limit'}
+        - {$ref: '#/components/parameters/offset'}
+      responses:
+        '200': {$ref: '#/components/responses/AssessmentPage'}
+        '400': {$ref: '#/components/responses/Error'}
+    post:
+      operationId: createAssessment
+      description: Requires assessments.manage. Snapshots active student placements into the eligible roster.
+      parameters: [{$ref: '#/components/parameters/schoolId'}, {$ref: '#/components/parameters/csrf'}]
+      requestBody: {$ref: '#/components/requestBodies/Assessment'}
+      responses:
+        '201': {$ref: '#/components/responses/Assessment'}
+        '400': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+  /schools/{schoolId}/assessments/{assessmentId}:
+    parameters: [{$ref: '#/components/parameters/schoolId'}, {$ref: '#/components/parameters/assessmentId'}]
+    get:
+      operationId: getAssessment
+      description: Requires assessments.read.
+      responses:
+        '200': {$ref: '#/components/responses/Assessment'}
+        '404': {$ref: '#/components/responses/Error'}
+    patch:
+      operationId: updateDraftAssessment
+      description: Requires assessments.manage. Draft-only; recalculates the eligible roster atomically.
+      parameters: [{$ref: '#/components/parameters/csrf'}]
+      requestBody: {$ref: '#/components/requestBodies/Assessment'}
+      responses:
+        '200': {$ref: '#/components/responses/Assessment'}
+        '400': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+  /schools/{schoolId}/assessments/{assessmentId}/open:
+    post:
+      operationId: openAssessment
+      description: Requires assessments.manage.
+      parameters: [{$ref: '#/components/parameters/schoolId'}, {$ref: '#/components/parameters/assessmentId'}, {$ref: '#/components/parameters/csrf'}]
+      responses:
+        '200': {$ref: '#/components/responses/Assessment'}
+        '409': {$ref: '#/components/responses/Error'}
+  /schools/{schoolId}/assessments/{assessmentId}/submit-for-moderation:
+    post:
+      operationId: submitAssessmentForModeration
+      description: Requires results.moderate.
+      parameters: [{$ref: '#/components/parameters/schoolId'}, {$ref: '#/components/parameters/assessmentId'}, {$ref: '#/components/parameters/csrf'}]
+      responses:
+        '200': {$ref: '#/components/responses/Assessment'}
+        '409': {$ref: '#/components/responses/Error'}
+  /schools/{schoolId}/assessments/{assessmentId}/marks:
+    get:
+      operationId: listAssessmentMarks
+      description: Requires assessments.read. Missing marks are blank roster slots, never zero.
+      parameters:
+        - {$ref: '#/components/parameters/schoolId'}
+        - {$ref: '#/components/parameters/assessmentId'}
+        - {$ref: '#/components/parameters/limit'}
+        - {$ref: '#/components/parameters/offset'}
+      responses:
+        '200': {$ref: '#/components/responses/ResultPage'}
+        '404': {$ref: '#/components/responses/Error'}
+    post:
+      operationId: enterAssessmentMarks
+      description: Requires results.enter and an active staff subject assignment to this class-subject.
+      parameters: [{$ref: '#/components/parameters/schoolId'}, {$ref: '#/components/parameters/assessmentId'}, {$ref: '#/components/parameters/csrf'}]
+      requestBody: {$ref: '#/components/requestBodies/MarkBatch'}
+      responses:
+        '201': {$ref: '#/components/responses/ResultList'}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+  /schools/{schoolId}/assessments/{assessmentId}/marks/{studentId}:
+    patch:
+      operationId: correctAssessmentMark
+      description: Requires results.correct. Revisions and audit events are written in the same transaction.
+      parameters: [{$ref: '#/components/parameters/schoolId'}, {$ref: '#/components/parameters/assessmentId'}, {$ref: '#/components/parameters/studentId'}, {$ref: '#/components/parameters/csrf'}]
+      requestBody: {$ref: '#/components/requestBodies/Mark'}
+      responses:
+        '200': {$ref: '#/components/responses/Result'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+  /schools/{schoolId}/assessments/{assessmentId}/finalize:
+    post:
+      operationId: finalizeAssessment
+      description: Requires results.finalize. Fails while any eligible result is missing.
+      parameters: [{$ref: '#/components/parameters/schoolId'}, {$ref: '#/components/parameters/assessmentId'}, {$ref: '#/components/parameters/csrf'}]
+      responses:
+        '200': {$ref: '#/components/responses/Assessment'}
+        '409': {$ref: '#/components/responses/Error'}
+  /schools/{schoolId}/assessments/{assessmentId}/publish:
+    post:
+      operationId: publishAssessment
+      description: Requires results.publish. Published results become visible in report-card data.
+      parameters: [{$ref: '#/components/parameters/schoolId'}, {$ref: '#/components/parameters/assessmentId'}, {$ref: '#/components/parameters/csrf'}]
+      responses:
+        '200': {$ref: '#/components/responses/Assessment'}
+        '409': {$ref: '#/components/responses/Error'}
+  /schools/{schoolId}/assessments/{assessmentId}/reopen-for-correction:
+    post:
+      operationId: reopenAssessmentForCorrection
+      description: Requires results.correct. Withdraws publication and returns the assessment to OPEN.
+      parameters: [{$ref: '#/components/parameters/schoolId'}, {$ref: '#/components/parameters/assessmentId'}, {$ref: '#/components/parameters/csrf'}]
+      responses:
+        '200': {$ref: '#/components/responses/Assessment'}
+        '409': {$ref: '#/components/responses/Error'}
+  /schools/{schoolId}/students/{studentId}/report-card:
+    get:
+      operationId: getPublishedReportCardData
+      description: Requires assessments.read. Returns published rows only; no weighted aggregate is calculated.
+      parameters:
+        - {$ref: '#/components/parameters/schoolId'}
+        - {$ref: '#/components/parameters/studentId'}
+        - {$ref: '#/components/parameters/academicYearIdQueryRequired'}
+        - {$ref: '#/components/parameters/termIdQueryRequired'}
+      responses:
+        '200': {$ref: '#/components/responses/ReportCard'}
+        '404': {$ref: '#/components/responses/Error'}
+  /schools/{schoolId}/academic-summary:
+    get:
+      operationId: getAcademicAssessmentSummary
+      description: Requires assessments.read. Counts only; no averages or curriculum-specific calculations.
+      parameters:
+        - {$ref: '#/components/parameters/schoolId'}
+        - {$ref: '#/components/parameters/academicYearIdQueryRequired'}
+        - {$ref: '#/components/parameters/termIdQueryRequired'}
+        - {$ref: '#/components/parameters/classIdQuery'}
+      responses:
+        '200': {$ref: '#/components/responses/Summary'}
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: elimara_session
+      description: HttpOnly session cookie (default name; configurable by SESSION_COOKIE_NAME). Mutations also require a matching CSRF cookie/header pair.
+  parameters:
+    schoolId: {name: schoolId, in: path, required: true, schema: {type: string, format: uuid}}
+    assessmentId: {name: assessmentId, in: path, required: true, schema: {type: string, format: uuid}}
+    gradingScaleId: {name: gradingScaleId, in: path, required: true, schema: {type: string, format: uuid}}
+    studentId: {name: studentId, in: path, required: true, schema: {type: string, format: uuid}}
+    csrf:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      description: Must match the readable elimara_csrf cookie (default name; configurable by CSRF_COOKIE_NAME).
+      schema: {type: string}
+    limit: {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 25}}
+    offset: {name: offset, in: query, schema: {type: integer, minimum: 0, default: 0}}
+    academicYearIdQuery: {name: academicYearId, in: query, schema: {type: string, format: uuid}}
+    termIdQuery: {name: termId, in: query, schema: {type: string, format: uuid}}
+    classIdQuery: {name: classId, in: query, schema: {type: string, format: uuid}}
+    academicYearIdQueryRequired: {name: academicYearId, in: query, required: true, schema: {type: string, format: uuid}}
+    termIdQueryRequired: {name: termId, in: query, required: true, schema: {type: string, format: uuid}}
+  requestBodies:
+    GradingScale:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [name, bands]
+            properties:
+              name: {type: string, minLength: 1, maxLength: 100}
+              bands:
+                type: array
+                minItems: 2
+                maxItems: 30
+                items: {$ref: '#/components/schemas/GradeBandInput'}
+            additionalProperties: false
+    Assessment:
+      required: true
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/AssessmentInput'}
+    MarkBatch:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [results]
+            properties:
+              results:
+                type: array
+                minItems: 1
+                maxItems: 500
+                items: {$ref: '#/components/schemas/MarkInput'}
+            additionalProperties: false
+    Mark:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [score]
+            properties:
+              score: {$ref: '#/components/schemas/DecimalScore'}
+            additionalProperties: false
+  schemas:
+    AssessmentStatus:
+      type: string
+      enum: [DRAFT, OPEN, MODERATION, FINALIZED, PUBLISHED]
+    DecimalScore:
+      type: string
+      pattern: '^(?:0|[1-9]\d{0,7})(?:\.\d{1,4})?$'
+      description: Non-negative exact decimal, maximum four fractional places.
+    GradeBandInput:
+      type: object
+      required: [code, label, lowerPercent, upperPercent]
+      properties:
+        code: {type: string, minLength: 1, maxLength: 24}
+        label: {type: string, minLength: 1, maxLength: 100}
+        lowerPercent: {type: string, pattern: '^(?:0|[1-9]\d?)(?:\.\d{1,2})?$|^100(?:\.0{1,2})?$'}
+        upperPercent: {type: string, pattern: '^(?:0|[1-9]\d?)(?:\.\d{1,2})?$|^100(?:\.0{1,2})?$'}
+      additionalProperties: false
+    AssessmentInput:
+      type: object
+      required: [academicYearId, termId, classId, classSubjectAssignmentId, gradingScaleId, name, startsOn, endsOn, maximumScore]
+      properties:
+        academicYearId: {type: string, format: uuid}
+        termId: {type: string, format: uuid}
+        classId: {type: string, format: uuid}
+        streamId: {type: string, format: uuid}
+        classSubjectAssignmentId: {type: string, format: uuid}
+        gradingScaleId: {type: string, format: uuid}
+        name: {type: string, minLength: 1, maxLength: 120}
+        startsOn: {type: string, format: date}
+        endsOn: {type: string, format: date}
+        maximumScore: {$ref: '#/components/schemas/DecimalScore'}
+      additionalProperties: false
+    MarkInput:
+      type: object
+      required: [studentId, score]
+      properties:
+        studentId: {type: string, format: uuid}
+        score: {$ref: '#/components/schemas/DecimalScore'}
+      additionalProperties: false
+    Assessment:
+      type: object
+      required: [id, academicYearId, termId, classId, classSubjectAssignmentId, subjectId, subjectName, gradingScaleId, name, startsOn, endsOn, maximumScore, status, eligibleCount, enteredCount, missingCount]
+      properties:
+        id: {type: string, format: uuid}
+        academicYearId: {type: string, format: uuid}
+        termId: {type: string, format: uuid}
+        classId: {type: string, format: uuid}
+        streamId: {type: [string, 'null'], format: uuid}
+        classSubjectAssignmentId: {type: string, format: uuid}
+        subjectId: {type: string, format: uuid}
+        subjectName: {type: string}
+        gradingScaleId: {type: string, format: uuid}
+        name: {type: string}
+        startsOn: {type: string, format: date}
+        endsOn: {type: string, format: date}
+        maximumScore: {type: string}
+        status: {$ref: '#/components/schemas/AssessmentStatus'}
+        eligibleCount: {type: integer}
+        enteredCount: {type: integer}
+        missingCount: {type: integer}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    GradeBand:
+      allOf:
+        - {$ref: '#/components/schemas/GradeBandInput'}
+        - type: object
+          required: [id, position]
+          properties:
+            id: {type: string, format: uuid}
+            position: {type: integer}
+    GradingScale:
+      type: object
+      required: [id, name, status, createdAt, bands]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        status: {type: string, enum: [ACTIVE, INACTIVE]}
+        createdAt: {type: string, format: date-time}
+        bands:
+          type: array
+          items: {$ref: '#/components/schemas/GradeBand'}
+    AssessmentResult:
+      type: object
+      required: [id, studentId, studentAdmissionNumber, studentGivenName, studentFamilyName, score, maximumScore, percentage, gradeCode, gradeLabel, enteredAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        studentId: {type: string, format: uuid}
+        studentAdmissionNumber: {type: string}
+        studentGivenName: {type: string}
+        studentFamilyName: {type: string}
+        score: {type: [string, 'null']}
+        maximumScore: {type: string}
+        percentage: {type: [string, 'null']}
+        gradeCode: {type: [string, 'null']}
+        gradeLabel: {type: [string, 'null']}
+        enteredAt: {type: [string, 'null'], format: date-time}
+        updatedAt: {type: string, format: date-time}
+    ReportCardItem:
+      type: object
+      properties:
+        assessmentId: {type: string, format: uuid}
+        assessmentName: {type: string}
+        termId: {type: string, format: uuid}
+        subjectId: {type: string, format: uuid}
+        subjectName: {type: string}
+        startsOn: {type: string, format: date}
+        score: {type: string}
+        maximumScore: {type: string}
+        percentage: {type: string}
+        gradeCode: {type: string}
+        gradeLabel: {type: string}
+    AcademicSummary:
+      type: object
+      required: [assessmentCount, eligibleCount, enteredCount, missingCount, publishedCount]
+      properties:
+        assessmentCount: {type: integer}
+        eligibleCount: {type: integer}
+        enteredCount: {type: integer}
+        missingCount: {type: integer}
+        publishedCount: {type: integer}
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: {type: string}
+            message: {type: string}
+            requestId: {type: string}
+  responses:
+    Error:
+      description: Standard API error.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    Assessment:
+      description: Assessment result.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: {$ref: '#/components/schemas/Assessment'}
+    AssessmentPage:
+      description: Paged assessment list.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data:
+                type: array
+                items: {$ref: '#/components/schemas/Assessment'}
+              meta: {type: object}
+    Scale:
+      description: Grading scale.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: {$ref: '#/components/schemas/GradingScale'}
+    ScaleList:
+      description: Grading scales.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data:
+                type: array
+                items: {$ref: '#/components/schemas/GradingScale'}
+    Result:
+      description: One assessment result.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: {$ref: '#/components/schemas/AssessmentResult'}
+    ResultList:
+      description: Entered assessment marks.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data:
+                type: array
+                items: {$ref: '#/components/schemas/AssessmentResult'}
+    ResultPage:
+      description: Paged eligible roster and marks.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data:
+                type: array
+                items: {$ref: '#/components/schemas/AssessmentResult'}
+              meta: {type: object}
+    ReportCard:
+      description: Published result rows for one student.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data:
+                type: array
+                items: {$ref: '#/components/schemas/ReportCardItem'}
+    Summary:
+      description: Assessment completion and publication counts.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: {$ref: '#/components/schemas/AcademicSummary'}

@@ -1,0 +1,525 @@
+openapi: 3.1.0
+info:
+  title: Elimara Platform Administration API
+  version: 1.0.0
+  description: Proposed Phase 12 platform administration and non-billing SaaS metadata API.
+servers:
+  - url: /api/v1
+security:
+  - sessionCookie: []
+paths:
+  /platform/mfa/enrollment:
+    post:
+      operationId: startPlatformMfaEnrollment
+      description: Requires an authenticated platform assignment, CSRF token, and current password. Returns the factor secret once.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [password]
+              properties:
+                password: { type: string, minLength: 1, maxLength: 1024 }
+      responses:
+        "201":
+          description: Enrollment started; response is no-store and contains the secret once.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnrollmentResponse"
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /platform/mfa/status:
+    get:
+      operationId: getPlatformMfaStatus
+      responses:
+        "200":
+          description: MFA enrollment and current session step-up state for the active platform administrator.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    required: [enrolled, sessionVerified]
+                    properties:
+                      enrolled: { type: boolean }
+                      sessionVerified: { type: boolean }
+        "403": { $ref: "#/components/responses/Error" }
+  /platform/mfa/enrollment/confirm:
+    post:
+      operationId: confirmPlatformMfaEnrollment
+      requestBody:
+        $ref: "#/components/requestBodies/TotpCode"
+      responses:
+        "204": { description: Enrollment confirmed and current session stepped up. }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /platform/mfa/verify:
+    post:
+      operationId: verifyPlatformMfa
+      requestBody:
+        $ref: "#/components/requestBodies/TotpCode"
+      responses:
+        "204": { description: Current session stepped up. }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /platform/summary:
+    get:
+      operationId: getPlatformSummary
+      responses:
+        "200":
+          description: Aggregate counts only.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/PlatformSummary" }
+        "403": { $ref: "#/components/responses/Error" }
+  /platform/schools:
+    get:
+      operationId: listPlatformSchools
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - name: status
+          in: query
+          schema: { $ref: "#/components/schemas/SchoolStatus" }
+        - name: search
+          in: query
+          schema: { type: string, minLength: 1, maxLength: 100 }
+      responses:
+        "200": { $ref: "#/components/responses/SchoolPage" }
+        "403": { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createPlatformSchool
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 200 }
+                contactEmail: { type: string, format: email, maxLength: 320 }
+                contactPhone: { type: string, minLength: 7, maxLength: 40 }
+      responses:
+        "201":
+          description: Created suspended tenant record.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/PlatformSchool" }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /platform/schools/{schoolId}:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+    get:
+      operationId: getPlatformSchool
+      responses:
+        "200":
+          description: School metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/PlatformSchool" }
+        "404": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+    patch:
+      operationId: updatePlatformSchool
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                name: { type: string, minLength: 1, maxLength: 200 }
+                contactEmail: { type: [string, "null"], format: email, maxLength: 320 }
+                contactPhone: { type: [string, "null"], minLength: 7, maxLength: 40 }
+      responses:
+        "200":
+          description: Updated school metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/PlatformSchool" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /platform/schools/{schoolId}/status:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+    patch:
+      operationId: changePlatformSchoolStatus
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [status]
+              properties:
+                status: { $ref: "#/components/schemas/SchoolStatus" }
+      responses:
+        "200":
+          description: Status changed or idempotently unchanged.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/PlatformSchool" }
+        "409": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /platform/plans:
+    get:
+      operationId: listSaasPlans
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - name: active
+          in: query
+          schema: { type: boolean }
+        - name: search
+          in: query
+          schema: { type: string, minLength: 1, maxLength: 100 }
+      responses:
+        "200": { $ref: "#/components/responses/PlanPage" }
+        "403": { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createSaasPlan
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PlanCreate" }
+      responses:
+        "201":
+          description: Plan metadata created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/SaasPlan" }
+        "409": { $ref: "#/components/responses/Error" }
+  /platform/plans/{id}:
+    parameters:
+      - $ref: "#/components/parameters/PlanId"
+    get:
+      operationId: getSaasPlan
+      responses:
+        "200":
+          description: Plan metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/SaasPlan" }
+        "404": { $ref: "#/components/responses/Error" }
+    patch:
+      operationId: updateSaasPlan
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PlanUpdate" }
+      responses:
+        "200":
+          description: Plan metadata updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/SaasPlan" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /platform/schools/{schoolId}/subscriptions:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+    get:
+      operationId: listSchoolSubscriptionHistory
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200": { $ref: "#/components/responses/SubscriptionPage" }
+        "404": { $ref: "#/components/responses/Error" }
+  /platform/schools/{schoolId}/subscription:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+    put:
+      operationId: assignSchoolPlan
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [planId]
+              properties:
+                planId: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Current assignment; repeating the same plan is idempotent.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/SchoolSubscription" }
+        "409": { $ref: "#/components/responses/Error" }
+  /platform/schools/{schoolId}/subscription/end:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+    post:
+      operationId: endSchoolPlanAssignment
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204": { description: Assignment ended or no current assignment existed. }
+        "404": { $ref: "#/components/responses/Error" }
+  /platform/audit-events:
+    get:
+      operationId: listPlatformAuditEvents
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200": { $ref: "#/components/responses/AuditPage" }
+        "403": { $ref: "#/components/responses/Error" }
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: elimara_session
+  parameters:
+    SchoolId:
+      name: schoolId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    PlanId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+    Offset:
+      name: offset
+      in: query
+      schema: { type: integer, minimum: 0, maximum: 1000000, default: 0 }
+    CsrfToken:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      schema: { type: string }
+  requestBodies:
+    TotpCode:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required: [code]
+            properties:
+              code: { type: string, pattern: '^\d{6}$' }
+  responses:
+    Error:
+      description: Standard API error.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                properties:
+                  code: { type: string }
+                  message: { type: string }
+                  requestId: { type: string }
+    SchoolPage:
+      description: Paginated school metadata.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/PageOfSchools" }
+    PlanPage:
+      description: Paginated plan metadata.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/PageOfPlans" }
+    SubscriptionPage:
+      description: Paginated subscription history.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/PageOfSubscriptions" }
+    AuditPage:
+      description: Paginated platform-only audit events.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/PageOfAuditEvents" }
+  schemas:
+    SchoolStatus:
+      type: string
+      enum: [ACTIVE, SUSPENDED, CLOSED]
+    PlatformSchool:
+      type: object
+      required: [id, name, status, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        contactEmail: { type: [string, "null"], format: email }
+        contactPhone: { type: [string, "null"] }
+        status: { $ref: "#/components/schemas/SchoolStatus" }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    Entitlements:
+      type: object
+      maxProperties: 100
+      additionalProperties:
+        oneOf:
+          - { type: string, maxLength: 250 }
+          - { type: boolean }
+          - { type: number, minimum: 0 }
+    SaasPlan:
+      type: object
+      required: [id, code, name, entitlements, active, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        description: { type: [string, "null"] }
+        entitlements: { $ref: "#/components/schemas/Entitlements" }
+        active: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    PlanCreate:
+      type: object
+      additionalProperties: false
+      required: [code, name, entitlements]
+      properties:
+        code: { type: string, pattern: '^[A-Z0-9][A-Z0-9_-]{1,79}$' }
+        name: { type: string, minLength: 1, maxLength: 160 }
+        description: { type: string, maxLength: 1000 }
+        entitlements: { $ref: "#/components/schemas/Entitlements" }
+    PlanUpdate:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        code: { type: string, pattern: '^[A-Z0-9][A-Z0-9_-]{1,79}$' }
+        name: { type: string, minLength: 1, maxLength: 160 }
+        description: { type: [string, "null"], maxLength: 1000 }
+        entitlements: { $ref: "#/components/schemas/Entitlements" }
+        active: { type: boolean }
+    SchoolSubscription:
+      type: object
+      required: [id, schoolId, schoolName, planId, planCode, planName, entitlements, assignedByUserId, assignedAt, endedAt]
+      properties:
+        id: { type: string, format: uuid }
+        schoolId: { type: string, format: uuid }
+        schoolName: { type: string }
+        planId: { type: string, format: uuid }
+        planCode: { type: string }
+        planName: { type: string }
+        entitlements: { $ref: "#/components/schemas/Entitlements" }
+        assignedByUserId: { type: string, format: uuid }
+        assignedAt: { type: string, format: date-time }
+        endedAt: { type: [string, "null"], format: date-time }
+    PlatformSummary:
+      type: object
+      required: [schools, activePlans, activeSubscriptions]
+      properties:
+        schools:
+          type: object
+          required: [ACTIVE, SUSPENDED, CLOSED]
+          properties:
+            ACTIVE: { type: integer }
+            SUSPENDED: { type: integer }
+            CLOSED: { type: integer }
+        activePlans: { type: integer }
+        activeSubscriptions: { type: integer }
+    EnrollmentResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [secret, provisioningUri]
+          properties:
+            secret: { type: string }
+            provisioningUri: { type: string }
+    PageMeta:
+      type: object
+      required: [limit, offset, total]
+      properties:
+        limit: { type: integer }
+        offset: { type: integer }
+        total: { type: integer }
+    PageOfSchools:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/PlatformSchool" } }
+        meta: { $ref: "#/components/schemas/PageMeta" }
+    PageOfPlans:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/SaasPlan" } }
+        meta: { $ref: "#/components/schemas/PageMeta" }
+    PageOfSubscriptions:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/SchoolSubscription" } }
+        meta: { $ref: "#/components/schemas/PageMeta" }
+    PlatformAuditEvent:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        actorUserId: { type: [string, "null"], format: uuid }
+        eventType: { type: string }
+        outcome: { type: string }
+        requestId: { type: [string, "null"] }
+        occurredAt: { type: string, format: date-time }
+        metadata: { type: object }
+    PageOfAuditEvents:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/PlatformAuditEvent" } }
+        meta: { $ref: "#/components/schemas/PageMeta" }

@@ -1,0 +1,232 @@
+import { PrismaClient } from "@prisma/client";
+
+export type {
+  AdmissionApplicationPageQuery,
+  AdmissionApplicationRecord,
+  AdmissionApplicationStatus,
+  AdmissionsStore,
+  AdmitApplicationInput,
+  AdmitApplicationResult,
+  ApplicationGuardianInput,
+  ApplicationPersonData,
+  ApplicationTransitionInput,
+  ChangeStudentStatusInput,
+  CreateAdmissionApplicationInput,
+  CreateGuardianInput,
+  CreateStudentGuardianInput,
+  EntityPage,
+  GuardianPageQuery,
+  GuardianProfileRevisionRecord,
+  GuardianRecord,
+  ProfileHistoryQuery,
+  StudentGuardianRecord,
+  StudentPageQuery,
+  StudentPlacementRecord,
+  StudentProfileRevisionRecord,
+  StudentRecord,
+  StudentStatus,
+  UpdateAdmissionApplicationInput,
+  UpdateGuardianInput,
+  UpdateStudentGuardianInput,
+  UpdateStudentProfileInput,
+} from "./admissions-contracts.js";
+export { AdmissionsStoreError, PrismaAdmissionsStore } from "./admissions-store.js";
+export type {
+  AcademicSummary,
+  AssessmentContext,
+  AssessmentPageQuery,
+  AssessmentRecord,
+  AssessmentResultInput,
+  AssessmentResultRecord,
+  AssessmentStatus,
+  AssessmentStore,
+  CorrectAssessmentResultInput,
+  CreateAssessmentInput,
+  CreateGradingScaleInput,
+  EnterResultsInput,
+  GradeBandRecord,
+  GradingScaleRecord,
+  ReportCardItem,
+  ResultPage,
+  UpdateDraftAssessmentInput,
+} from "./assessment-contracts.js";
+export {
+  AssessmentRuleError,
+  assessmentCanEdit,
+  assessmentCanEnterMarks,
+  assessmentCanTransition,
+  calculateGrade,
+  normalizeGradeBands,
+} from "./assessment-rules.js";
+export { AssessmentStoreError, PrismaAssessmentStore } from "./assessment-store.js";
+export type {
+  AcademicClassRecord,
+  AcademicRecordStatus,
+  AcademicYearRecord,
+  ClassStreamRecord,
+  ClassSubjectRecord,
+  ConfigurationListQuery,
+  ConfigurationPage,
+  ConfigurationRecord,
+  ConfigurationResource,
+  CreateConfigurationInput,
+  DeactivateConfigurationInput,
+  DeactivationOutcome,
+  IdentityStore,
+  RateLimitResult,
+  SchoolAccessRecord,
+  SchoolConfigurationStore,
+  SchoolProfileRecord,
+  SchoolProfileUpdate,
+  SessionRecord,
+  TermRecord,
+  UpdateConfigurationInput,
+  UserRecord,
+} from "./contracts.js";
+export type {
+  AllocatePaymentInput,
+  CreateFeeStructureInput,
+  CreateFinancialAdjustmentInput,
+  CreatePaymentRefundInput,
+  FeeStructureItemRecord,
+  FeeStructureRecord,
+  FinanceContext,
+  FinancePageQuery,
+  FinanceReport,
+  FinanceStore,
+  FinancialAccountSummary,
+  FinancialChargeRecord,
+  FinancialPaymentRecord,
+  PaymentAllocationRecord,
+  PaymentReconciliationRecord,
+  PostStudentChargeInput,
+  ReconcilePaymentInput,
+  RecordFinancialPaymentInput,
+  ReverseAllocationInput,
+  ReverseChargeInput,
+} from "./finance-contracts.js";
+export {
+  amountToMinorUnits,
+  calculateAccountBalance,
+  ensureNotExceeding,
+  FinanceRuleError,
+  formatMinorUnits,
+} from "./finance-rules.js";
+export { FinanceStoreError, PrismaFinanceStore } from "./finance-store.js";
+export { PrismaIdentityStore } from "./identity-store.js";
+export {
+  type LibraryBorrowerInput,
+  type LibraryCategoryRecord,
+  type LibraryContext,
+  type LibraryCopyRecord,
+  type LibraryItemRecord,
+  type LibraryLoanFilter,
+  type LibraryLoanRecord,
+  type LibraryLoanReport,
+  type LibraryPage,
+  type LibraryPageQuery,
+  type LibraryPolicyRecord,
+  type LibraryReservationRecord,
+  type LibraryReservationStatus,
+  type LibraryStore,
+  LibraryStoreError,
+  type LibraryStoreErrorCode,
+} from "./library-contracts.js";
+export { PrismaLibraryStore } from "./library-store.js";
+export type {
+  ClaimedNotification,
+  NotificationChannel,
+  NotificationDeliveryResult,
+  NotificationDeliveryStatus,
+  NotificationPageQuery,
+  NotificationRecord,
+  NotificationStore,
+  QueueNotificationInput,
+} from "./notification-contracts.js";
+export { NotificationStoreError, PrismaNotificationStore } from "./notification-store.js";
+export type {
+  AbsenceReasonRecord,
+  AttendanceRecordData,
+  AttendanceRegisterRecord,
+  AttendanceRegisterStatus,
+  AttendanceStatus,
+  AttendanceSummaryRow,
+  AttendanceType,
+  AvailabilityRecord,
+  CreateAttendanceRegisterInput,
+  CreateTimetableLessonInput,
+  OperationsContext,
+  OperationsPage,
+  OperationsPageQuery,
+  RecordAttendanceInput,
+  RoomRecord,
+  SchoolOperationsStore,
+  TimetableLessonRecord,
+  TimetablePeriodRecord,
+  TimetableRecord,
+  UpdateTimetableLessonInput,
+  Weekday,
+} from "./operations-contracts.js";
+export type { TimetableConflict, TimetableSlot } from "./operations-rules.js";
+export { isWithinAvailability, timetableConflict } from "./operations-rules.js";
+export { OperationsStoreError, PrismaSchoolOperationsStore } from "./operations-store.js";
+export type {
+  ChangePlatformSchoolStatusInput,
+  CreatePlatformSchoolInput,
+  CreateSaasPlanInput,
+  PlatformAdminStore,
+  PlatformAuditQuery,
+  PlatformAuditRecord,
+  PlatformMfaRecord,
+  PlatformPage,
+  PlatformSchoolListQuery,
+  PlatformSchoolRecord,
+  PlatformSchoolStatus,
+  PlatformSummary,
+  SaasPlanEntitlements,
+  SaasPlanListQuery,
+  SaasPlanRecord,
+  SchoolSubscriptionRecord,
+  UpdatePlatformSchoolInput,
+  UpdateSaasPlanInput,
+} from "./platform-contracts.js";
+export { PlatformAdminStoreError } from "./platform-contracts.js";
+export { PrismaPlatformAdminStore } from "./platform-store.js";
+export {
+  PrismaSchoolConfigurationStore,
+  SchoolConfigurationStoreError,
+} from "./school-configuration-store.js";
+export type {
+  ChangeStaffStatusInput,
+  CreateStaffClassAssignmentInput,
+  CreateStaffDepartmentInput,
+  CreateStaffEmploymentInput,
+  CreateStaffInput,
+  CreateStaffSubjectAssignmentInput,
+  DeactivateStaffDepartmentInput,
+  DepartmentPageQuery,
+  EndStaffAssignmentInput,
+  EndStaffEmploymentInput,
+  StaffAssignmentRecord,
+  StaffDepartmentRecord,
+  StaffEmploymentRecord,
+  StaffEntityPage,
+  StaffHistoryPageQuery,
+  StaffPageQuery,
+  StaffRecord,
+  StaffStatus,
+  StaffStore,
+  UpdateStaffDepartmentInput,
+  UpdateStaffInput,
+} from "./staff-contracts.js";
+export { PrismaStaffStore, StaffStoreError } from "./staff-store.js";
+
+export function createDatabaseClient(databaseUrl: string): PrismaClient {
+  return new PrismaClient({
+    datasources: {
+      db: {
+        url: databaseUrl,
+      },
+    },
+  });
+}

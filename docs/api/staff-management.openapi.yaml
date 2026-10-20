@@ -1,0 +1,809 @@
+openapi: 3.1.0
+info:
+  title: Elimara Staff Management API
+  version: 1.0.0
+  description: >
+    Phase 05 staff, employment, and teaching assignment contract proposal.
+    Permission grants remain unseeded and the contract requires frontend review.
+servers:
+  - url: /api/v1
+security:
+  - sessionCookie: []
+paths:
+  /schools/{schoolId}/departments:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+    get:
+      operationId: listStaffDepartments
+      description: Requires staff.profile.read.
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Search"
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [ACTIVE, INACTIVE]
+        - $ref: "#/components/parameters/SortOrder"
+      responses:
+        "200":
+          $ref: "#/components/responses/DepartmentPage"
+        default:
+          $ref: "#/components/responses/ApiError"
+    post:
+      operationId: createStaffDepartment
+      description: Requires staff.profile.manage.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DepartmentInput"
+      responses:
+        "201":
+          $ref: "#/components/responses/Department"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/departments/{id}:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+      - $ref: "#/components/parameters/Id"
+    patch:
+      operationId: renameStaffDepartment
+      description: Requires staff.profile.manage. Department name must be unique within the school.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DepartmentInput"
+      responses:
+        "200":
+          $ref: "#/components/responses/Department"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/departments/{id}/deactivate:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+      - $ref: "#/components/parameters/Id"
+    post:
+      operationId: deactivateStaffDepartment
+      description: Requires staff.profile.manage. Fails while active staff are assigned to the department.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "204":
+          description: Department deactivated; record retained.
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/staff:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+    get:
+      operationId: listStaff
+      description: Requires staff.profile.read.
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Search"
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [ACTIVE, INACTIVE]
+        - name: departmentId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [staffNumber, familyName, createdAt]
+            default: familyName
+        - $ref: "#/components/parameters/SortOrder"
+      responses:
+        "200":
+          $ref: "#/components/responses/StaffPage"
+        default:
+          $ref: "#/components/responses/ApiError"
+    post:
+      operationId: createStaff
+      description: Requires staff.profile.manage. Creating a profile does not create an account or grant access.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StaffInput"
+      responses:
+        "201":
+          $ref: "#/components/responses/Staff"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/staff/{id}:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+      - $ref: "#/components/parameters/Id"
+    get:
+      operationId: getStaff
+      description: Requires staff.profile.read.
+      responses:
+        "200":
+          $ref: "#/components/responses/Staff"
+        default:
+          $ref: "#/components/responses/ApiError"
+    patch:
+      operationId: updateStaff
+      description: Requires staff.profile.manage.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StaffUpdate"
+      responses:
+        "200":
+          $ref: "#/components/responses/Staff"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/staff/{id}/status:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+      - $ref: "#/components/parameters/Id"
+    patch:
+      operationId: changeStaffStatus
+      description: >
+        Requires staff.profile.manage. End current employment and assignments
+        before deactivation. Reactivation requires an active department or no
+        department link.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [ACTIVE, INACTIVE]
+      responses:
+        "200":
+          $ref: "#/components/responses/Staff"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/staff/{staffId}/employments:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+      - $ref: "#/components/parameters/StaffId"
+    get:
+      operationId: listStaffEmployments
+      description: Requires staff.employment.read.
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          $ref: "#/components/responses/EmploymentList"
+        default:
+          $ref: "#/components/responses/ApiError"
+    post:
+      operationId: createStaffEmployment
+      description: Requires staff.employment.manage. At most one employment episode may be current.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [positionTitle, startsOn]
+              properties:
+                positionTitle:
+                  type: string
+                  minLength: 1
+                  maxLength: 120
+                startsOn:
+                  type: string
+                  format: date
+      responses:
+        "201":
+          $ref: "#/components/responses/Employment"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/staff/{staffId}/employments/{employmentId}/end:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+      - $ref: "#/components/parameters/StaffId"
+      - $ref: "#/components/parameters/EmploymentId"
+    post:
+      operationId: endStaffEmployment
+      description: Requires staff.employment.manage. Employment history is retained.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [endsOn]
+              properties:
+                endsOn:
+                  type: string
+                  format: date
+      responses:
+        "200":
+          $ref: "#/components/responses/Employment"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/staff/{staffId}/assignments:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+      - $ref: "#/components/parameters/StaffId"
+    get:
+      operationId: listStaffAssignments
+      description: Requires staff.assignment.read.
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          $ref: "#/components/responses/AssignmentList"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/staff/{staffId}/class-assignments:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+      - $ref: "#/components/parameters/StaffId"
+    post:
+      operationId: createStaffClassAssignment
+      description: Requires staff.assignment.manage. Multiple teachers may share an active class or stream target.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [classId]
+              properties:
+                classId:
+                  type: string
+                  format: uuid
+                streamId:
+                  type: string
+                  format: uuid
+      responses:
+        "201":
+          $ref: "#/components/responses/Assignment"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/staff/{staffId}/subject-assignments:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+      - $ref: "#/components/parameters/StaffId"
+    post:
+      operationId: createStaffSubjectAssignment
+      description: Requires staff.assignment.manage and an active same-school class-subject configuration.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [classSubjectAssignmentId]
+              properties:
+                classSubjectAssignmentId:
+                  type: string
+                  format: uuid
+      responses:
+        "201":
+          $ref: "#/components/responses/Assignment"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/staff/{staffId}/class-assignments/{assignmentId}/end:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+      - $ref: "#/components/parameters/StaffId"
+      - $ref: "#/components/parameters/AssignmentId"
+    post:
+      operationId: endStaffClassAssignment
+      description: Requires staff.assignment.manage. The ended assignment remains in history.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "200":
+          $ref: "#/components/responses/Assignment"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/staff/{staffId}/subject-assignments/{assignmentId}/end:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+      - $ref: "#/components/parameters/StaffId"
+      - $ref: "#/components/parameters/AssignmentId"
+    post:
+      operationId: endStaffSubjectAssignment
+      description: Requires staff.assignment.manage. The ended assignment remains in history.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "200":
+          $ref: "#/components/responses/Assignment"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: elimara_session
+  parameters:
+    SchoolId:
+      name: schoolId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    StaffId:
+      name: staffId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    EmploymentId:
+      name: employmentId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    AssignmentId:
+      name: assignmentId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 25
+    Offset:
+      name: offset
+      in: query
+      schema:
+        type: integer
+        minimum: 0
+        maximum: 1000000
+        default: 0
+    Search:
+      name: q
+      in: query
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 100
+    SortOrder:
+      name: sortOrder
+      in: query
+      schema:
+        type: string
+        enum: [asc, desc]
+        default: asc
+    CsrfToken:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      schema:
+        type: string
+  schemas:
+    DepartmentInput:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+    StaffInput:
+      type: object
+      additionalProperties: false
+      required: [staffNumber, givenName, familyName, positionTitle]
+      properties:
+        staffNumber:
+          type: string
+          minLength: 1
+          maxLength: 80
+        givenName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        middleName:
+          type: [string, "null"]
+          maxLength: 100
+        familyName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        contactEmail:
+          type: [string, "null"]
+          format: email
+          maxLength: 320
+        contactPhone:
+          type: [string, "null"]
+          minLength: 7
+          maxLength: 40
+        positionTitle:
+          type: string
+          minLength: 1
+          maxLength: 120
+        departmentId:
+          type: [string, "null"]
+          format: uuid
+        userId:
+          type: [string, "null"]
+          format: uuid
+    StaffUpdate:
+      description: >
+        Send one or more profile fields. The server rejects empty updates and
+        applies membership and tenant validation to departmentId and userId.
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        staffNumber:
+          type: string
+          minLength: 1
+          maxLength: 80
+        givenName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        middleName:
+          type: [string, "null"]
+          maxLength: 100
+        familyName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        contactEmail:
+          type: [string, "null"]
+          format: email
+          maxLength: 320
+        contactPhone:
+          type: [string, "null"]
+          minLength: 7
+          maxLength: 40
+        positionTitle:
+          type: string
+          minLength: 1
+          maxLength: 120
+        departmentId:
+          type: [string, "null"]
+          format: uuid
+        userId:
+          type: [string, "null"]
+          format: uuid
+    Staff:
+      type: object
+      required: [id, staffNumber, givenName, middleName, familyName, contactEmail, contactPhone, positionTitle, departmentId, department, userId, status, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        staffNumber:
+          type: string
+        givenName:
+          type: string
+        middleName:
+          type: [string, "null"]
+        familyName:
+          type: string
+        contactEmail:
+          type: [string, "null"]
+        contactPhone:
+          type: [string, "null"]
+        positionTitle:
+          type: string
+        departmentId:
+          type: [string, "null"]
+        department:
+          oneOf:
+            - $ref: "#/components/schemas/Department"
+            - type: "null"
+        userId:
+          type: [string, "null"]
+          format: uuid
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    Department:
+      type: object
+      required: [id, name, status, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    Employment:
+      type: object
+      required: [id, staffId, positionTitle, startsOn, endsOn, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        staffId:
+          type: string
+          format: uuid
+        positionTitle:
+          type: string
+        startsOn:
+          type: string
+          format: date
+        endsOn:
+          type: [string, "null"]
+          format: date
+        createdAt:
+          type: string
+          format: date-time
+    Assignment:
+      oneOf:
+        - $ref: "#/components/schemas/ClassAssignment"
+        - $ref: "#/components/schemas/SubjectAssignment"
+    ClassAssignment:
+      type: object
+      required: [kind, id, classId, streamId, createdAt, endedAt]
+      properties:
+        kind:
+          type: string
+          const: CLASS
+        id:
+          type: string
+          format: uuid
+        classId:
+          type: string
+          format: uuid
+        streamId:
+          type: [string, "null"]
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: [string, "null"]
+          format: date-time
+    SubjectAssignment:
+      type: object
+      required: [kind, id, classSubjectAssignmentId, createdAt, endedAt]
+      properties:
+        kind:
+          type: string
+          const: SUBJECT
+        id:
+          type: string
+          format: uuid
+        classSubjectAssignmentId:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: [string, "null"]
+          format: date-time
+    StaffEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/Staff"
+    DepartmentEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/Department"
+    EmploymentEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/Employment"
+    AssignmentEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/Assignment"
+    ApiError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: true
+  responses:
+    ApiError:
+      description: Standard Elimara API error.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+    Staff:
+      description: Staff profile.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/StaffEnvelope"
+    Department:
+      description: Department.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/DepartmentEnvelope"
+    Employment:
+      description: Employment episode.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/EmploymentEnvelope"
+    Assignment:
+      description: Teaching assignment.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/AssignmentEnvelope"
+    DepartmentPage:
+      description: Paginated departments.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data, meta]
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Department"
+              meta:
+                type: object
+                required: [limit, offset, total]
+                properties:
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+                  total:
+                    type: integer
+    StaffPage:
+      description: Paginated staff.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data, meta]
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Staff"
+              meta:
+                type: object
+                required: [limit, offset, total]
+                properties:
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+                  total:
+                    type: integer
+    EmploymentList:
+      description: Paginated employment history.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data, meta]
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Employment"
+              meta:
+                type: object
+                required: [limit, offset, total]
+                properties:
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+                  total:
+                    type: integer
+    AssignmentList:
+      description: Paginated class and subject assignment history.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data, meta]
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Assignment"
+              meta:
+                type: object
+                required: [limit, offset, total]
+                properties:
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+                  total:
+                    type: integer

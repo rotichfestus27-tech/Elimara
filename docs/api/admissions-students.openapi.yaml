@@ -1,0 +1,996 @@
+openapi: 3.1.0
+info:
+  title: Elimara Admissions and Student Records API
+  version: 1.0.0
+  description: >
+    Phase 04 staff-only admissions and student-record contract proposal.
+    Pending database-backed validation and joint frontend/backend approval.
+servers:
+  - url: /api/v1
+security:
+  - sessionCookie: []
+paths:
+  /schools/{schoolId}/admission-applications:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+    get:
+      operationId: listAdmissionApplications
+      description: Requires admissions.application.read.
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/ApplicationStatus"
+        - $ref: "#/components/parameters/Search"
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [createdAt, updatedAt, status]
+            default: createdAt
+        - $ref: "#/components/parameters/SortOrder"
+      responses:
+        "200":
+          $ref: "#/components/responses/ApplicationPage"
+        default:
+          $ref: "#/components/responses/ApiError"
+    post:
+      operationId: createAdmissionApplication
+      description: Requires admissions.application.create. Creates a staff-managed draft.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApplicationPerson"
+      responses:
+        "201":
+          $ref: "#/components/responses/Application"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/admission-applications/{id}:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+      - $ref: "#/components/parameters/Id"
+    get:
+      operationId: getAdmissionApplication
+      description: Requires admissions.application.read.
+      responses:
+        "200":
+          $ref: "#/components/responses/Application"
+        default:
+          $ref: "#/components/responses/ApiError"
+    patch:
+      operationId: updateDraftAdmissionApplication
+      description: Requires admissions.application.create. Only DRAFT applications may be edited.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApplicationPerson"
+      responses:
+        "200":
+          $ref: "#/components/responses/Application"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/admission-applications/{id}/transitions:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+      - $ref: "#/components/parameters/Id"
+    post:
+      operationId: transitionAdmissionApplication
+      description: >
+        submit and withdraw require admissions.application.create.
+        review, accept, and reject require admissions.application.review.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [transition]
+              properties:
+                transition:
+                  type: string
+                  enum: [submit, review, accept, reject, withdraw]
+      responses:
+        "200":
+          $ref: "#/components/responses/Application"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/admission-applications/{id}/admit:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+      - $ref: "#/components/parameters/Id"
+    post:
+      operationId: admitApplication
+      description: >
+        Requires admissions.application.admit. Atomically creates the student,
+        guardian links, and initial class placement. Identical retries return
+        the existing student.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [academicYearId, classId]
+              properties:
+                academicYearId:
+                  type: string
+                  format: uuid
+                classId:
+                  type: string
+                  format: uuid
+                streamId:
+                  type: string
+                  format: uuid
+      responses:
+        "201":
+          $ref: "#/components/responses/AdmittedStudent"
+        "200":
+          description: Idempotent admission retry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdmittedStudentEnvelope"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/students:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+    get:
+      operationId: listStudents
+      description: Requires students.profile.read.
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/StudentStatus"
+        - $ref: "#/components/parameters/Search"
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [admissionNumber, familyName, createdAt]
+            default: admissionNumber
+        - $ref: "#/components/parameters/SortOrder"
+      responses:
+        "200":
+          $ref: "#/components/responses/StudentPage"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/students/{id}:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+      - $ref: "#/components/parameters/Id"
+    get:
+      operationId: getStudent
+      description: Requires students.profile.read.
+      responses:
+        "200":
+          $ref: "#/components/responses/Student"
+        default:
+          $ref: "#/components/responses/ApiError"
+    patch:
+      operationId: updateStudentProfile
+      description: Requires students.profile.update. Prior profile is retained.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StudentUpdate"
+      responses:
+        "200":
+          $ref: "#/components/responses/Student"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/students/{id}/status:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+      - $ref: "#/components/parameters/Id"
+    post:
+      operationId: changeStudentStatus
+      description: Requires students.profile.status. Only ACTIVE may transition.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [TRANSFERRED, GRADUATED, WITHDRAWN]
+      responses:
+        "200":
+          $ref: "#/components/responses/Student"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/students/{id}/profile-history:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+      - $ref: "#/components/parameters/Id"
+    get:
+      operationId: listStudentProfileHistory
+      description: Requires students.profile.read. Returns prior snapshots, newest first.
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          description: Prior student profile snapshots.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StudentRevisionPage"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/students/{id}/guardians:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+      - $ref: "#/components/parameters/Id"
+    get:
+      operationId: listStudentGuardians
+      description: Requires students.profile.read and guardians.profile.read.
+      responses:
+        "200":
+          description: Student-guardian links and guardian profiles.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/StudentGuardian"
+        default:
+          $ref: "#/components/responses/ApiError"
+    post:
+      operationId: linkStudentGuardian
+      description: Requires students.guardian.manage; guardian must belong to the same school.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [guardianId, relationship, authorizedAccess]
+              properties:
+                guardianId:
+                  type: string
+                  format: uuid
+                relationship:
+                  type: string
+                  minLength: 1
+                  maxLength: 60
+                authorizedAccess:
+                  type: boolean
+      responses:
+        "201":
+          description: Created guardian relationship.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/StudentGuardian"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/students/{id}/guardians/{guardianId}:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+      - $ref: "#/components/parameters/Id"
+      - $ref: "#/components/parameters/GuardianId"
+    patch:
+      operationId: updateStudentGuardian
+      description: Requires students.guardian.manage. authorizedAccess can be revoked.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                relationship:
+                  type: string
+                  minLength: 1
+                  maxLength: 60
+                authorizedAccess:
+                  type: boolean
+      responses:
+        "200":
+          description: Updated guardian relationship.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/StudentGuardian"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/students/{id}/placements:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+      - $ref: "#/components/parameters/Id"
+    get:
+      operationId: listStudentPlacements
+      description: Requires students.profile.read.
+      responses:
+        "200":
+          description: Student placement history.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/StudentPlacement"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/guardians:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+    get:
+      operationId: listGuardians
+      description: Requires guardians.profile.read.
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Search"
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [familyName, createdAt]
+            default: familyName
+        - $ref: "#/components/parameters/SortOrder"
+      responses:
+        "200":
+          $ref: "#/components/responses/GuardianPage"
+        default:
+          $ref: "#/components/responses/ApiError"
+    post:
+      operationId: createGuardian
+      description: Requires guardians.profile.manage; at least one contact method is required.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GuardianInput"
+      responses:
+        "201":
+          $ref: "#/components/responses/Guardian"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/guardians/{guardianId}:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+      - $ref: "#/components/parameters/GuardianId"
+    get:
+      operationId: getGuardian
+      description: Requires guardians.profile.read.
+      responses:
+        "200":
+          $ref: "#/components/responses/Guardian"
+        default:
+          $ref: "#/components/responses/ApiError"
+    patch:
+      operationId: updateGuardian
+      description: Requires guardians.profile.manage; a contact method must remain.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GuardianUpdate"
+      responses:
+        "200":
+          $ref: "#/components/responses/Guardian"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /schools/{schoolId}/guardians/{guardianId}/profile-history:
+    parameters:
+      - $ref: "#/components/parameters/SchoolId"
+      - $ref: "#/components/parameters/GuardianId"
+    get:
+      operationId: listGuardianProfileHistory
+      description: Requires guardians.profile.read. Returns prior snapshots, newest first.
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          description: Prior guardian profile snapshots.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuardianRevisionPage"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: elimara_session
+      description: HttpOnly session cookie; mutation requests also require CSRF.
+  parameters:
+    SchoolId:
+      name: schoolId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    GuardianId:
+      name: guardianId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    CsrfToken:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      schema:
+        type: string
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 25
+    Offset:
+      name: offset
+      in: query
+      schema:
+        type: integer
+        minimum: 0
+        maximum: 1000000
+        default: 0
+    Search:
+      name: q
+      in: query
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 100
+    SortOrder:
+      name: sortOrder
+      in: query
+      schema:
+        type: string
+        enum: [asc, desc]
+        default: asc
+  schemas:
+    ApplicationStatus:
+      type: string
+      enum: [DRAFT, SUBMITTED, UNDER_REVIEW, ACCEPTED, REJECTED, WITHDRAWN, ADMITTED]
+    StudentStatus:
+      type: string
+      enum: [ACTIVE, TRANSFERRED, GRADUATED, WITHDRAWN]
+    ApplicationPerson:
+      type: object
+      additionalProperties: false
+      required: [givenName, familyName, guardians]
+      properties:
+        givenName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        middleName:
+          type: [string, "null"]
+          maxLength: 100
+        familyName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        dateOfBirth:
+          type: [string, "null"]
+          format: date
+        guardians:
+          type: array
+          minItems: 1
+          maxItems: 10
+          items:
+            oneOf:
+              - type: object
+                additionalProperties: false
+                required: [existingGuardianId, relationship, authorizedAccess]
+                properties:
+                  existingGuardianId:
+                    type: string
+                    format: uuid
+                  relationship:
+                    type: string
+                    minLength: 1
+                    maxLength: 60
+                  authorizedAccess:
+                    type: boolean
+              - $ref: "#/components/schemas/NewGuardianInput"
+    NewGuardianInput:
+      type: object
+      additionalProperties: false
+      required: [givenName, familyName, relationship, authorizedAccess]
+      properties:
+        givenName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        middleName:
+          type: [string, "null"]
+          maxLength: 100
+        familyName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        email:
+          type: [string, "null"]
+          format: email
+        phone:
+          type: [string, "null"]
+          minLength: 7
+          maxLength: 40
+        relationship:
+          type: string
+          minLength: 1
+          maxLength: 60
+        authorizedAccess:
+          type: boolean
+    GuardianInput:
+      type: object
+      additionalProperties: false
+      required: [givenName, familyName]
+      properties:
+        givenName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        middleName:
+          type: [string, "null"]
+          maxLength: 100
+        familyName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        email:
+          type: [string, "null"]
+          format: email
+        phone:
+          type: [string, "null"]
+          minLength: 7
+          maxLength: 40
+      anyOf:
+        - required: [email]
+        - required: [phone]
+    GuardianUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        givenName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        middleName:
+          type: [string, "null"]
+          maxLength: 100
+        familyName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        email:
+          type: [string, "null"]
+          format: email
+        phone:
+          type: [string, "null"]
+          minLength: 7
+          maxLength: 40
+    StudentUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        givenName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        middleName:
+          type: [string, "null"]
+          maxLength: 100
+        familyName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        dateOfBirth:
+          type: [string, "null"]
+          format: date
+    AdmissionApplication:
+      type: object
+      required: [id, status, possibleDuplicate, givenName, familyName, guardians]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          $ref: "#/components/schemas/ApplicationStatus"
+        possibleDuplicate:
+          type: boolean
+        givenName:
+          type: string
+        middleName:
+          type: [string, "null"]
+        familyName:
+          type: string
+        dateOfBirth:
+          type: [string, "null"]
+          format: date
+        studentId:
+          type: [string, "null"]
+          format: uuid
+        guardians:
+          type: array
+          items:
+            type: object
+    Student:
+      type: object
+      required: [id, admissionNumber, admissionYearId, admissionApplicationId, givenName, familyName, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        admissionNumber:
+          type: string
+          example: 2026/001
+        admissionYearId:
+          type: string
+          format: uuid
+        admissionApplicationId:
+          type: string
+          format: uuid
+        givenName:
+          type: string
+        middleName:
+          type: [string, "null"]
+        familyName:
+          type: string
+        dateOfBirth:
+          type: [string, "null"]
+          format: date
+        status:
+          $ref: "#/components/schemas/StudentStatus"
+    Guardian:
+      type: object
+      required: [id, givenName, familyName, email, phone]
+      properties:
+        id:
+          type: string
+          format: uuid
+        givenName:
+          type: string
+        middleName:
+          type: [string, "null"]
+        familyName:
+          type: string
+        email:
+          type: [string, "null"]
+          format: email
+        phone:
+          type: [string, "null"]
+    StudentGuardian:
+      type: object
+      required: [id, studentId, guardianId, relationship, authorizedAccess, guardian]
+      properties:
+        id:
+          type: string
+          format: uuid
+        studentId:
+          type: string
+          format: uuid
+        guardianId:
+          type: string
+          format: uuid
+        relationship:
+          type: string
+        authorizedAccess:
+          type: boolean
+        guardian:
+          $ref: "#/components/schemas/Guardian"
+    StudentPlacement:
+      type: object
+      required: [id, studentId, academicYearId, classId, streamId, startedAt, endedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        studentId:
+          type: string
+          format: uuid
+        academicYearId:
+          type: string
+          format: uuid
+        classId:
+          type: string
+          format: uuid
+        streamId:
+          type: [string, "null"]
+          format: uuid
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: [string, "null"]
+          format: date-time
+    StudentRevision:
+      type: object
+      required: [id, studentId, givenName, familyName, recordedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        studentId:
+          type: string
+          format: uuid
+        givenName:
+          type: string
+        middleName:
+          type: [string, "null"]
+        familyName:
+          type: string
+        dateOfBirth:
+          type: [string, "null"]
+          format: date
+        recordedAt:
+          type: string
+          format: date-time
+    GuardianRevision:
+      type: object
+      required: [id, guardianId, givenName, familyName, recordedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        guardianId:
+          type: string
+          format: uuid
+        givenName:
+          type: string
+        middleName:
+          type: [string, "null"]
+        familyName:
+          type: string
+        email:
+          type: [string, "null"]
+        phone:
+          type: [string, "null"]
+        recordedAt:
+          type: string
+          format: date-time
+    StudentRevisionPage:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/StudentRevision"
+        meta:
+          $ref: "#/components/schemas/PageMeta"
+    GuardianRevisionPage:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/GuardianRevision"
+        meta:
+          $ref: "#/components/schemas/PageMeta"
+    PageMeta:
+      type: object
+      required: [limit, offset, total]
+      properties:
+        limit:
+          type: integer
+        offset:
+          type: integer
+        total:
+          type: integer
+    AdmittedStudentEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/Student"
+        meta:
+          type: object
+          required: [replayed]
+          properties:
+            replayed:
+              type: boolean
+    ApiError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, requestId]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            requestId:
+              type: string
+            issues:
+              type: array
+              items:
+                type: object
+                required: [path, code, message]
+                properties:
+                  path:
+                    type: string
+                  code:
+                    type: string
+                  message:
+                    type: string
+  responses:
+    Application:
+      description: Admission application.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/AdmissionApplication"
+    AdmittedStudent:
+      description: Newly admitted student or idempotent retry response.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/AdmittedStudentEnvelope"
+    Student:
+      description: Student record.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/Student"
+    Guardian:
+      description: Guardian profile.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data:
+                $ref: "#/components/schemas/Guardian"
+    ApplicationPage:
+      description: Paginated applications.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data, meta]
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdmissionApplication"
+              meta:
+                $ref: "#/components/schemas/PageMeta"
+    StudentPage:
+      description: Paginated students.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data, meta]
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Student"
+              meta:
+                $ref: "#/components/schemas/PageMeta"
+    GuardianPage:
+      description: Paginated guardians.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data, meta]
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Guardian"
+              meta:
+                $ref: "#/components/schemas/PageMeta"
+    ApiError:
+      description: Standard Elimara API error.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"

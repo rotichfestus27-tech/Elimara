@@ -1,0 +1,288 @@
+openapi: 3.1.0
+info:
+  title: Elimara Reports API
+  version: 1.0.0
+  description: Phase 10 school-scoped reporting proposal; review with frontend before adopting DTOs.
+servers:
+  - url: /api/v1
+security:
+  - sessionCookie: []
+paths:
+  /schools/{schoolId}/reports/dashboard:
+    get:
+      operationId: getSchoolDashboardSummary
+      description: Requires reports.dashboard.read, attendance.register.read, assessments.read and finance.reports.read.
+      parameters:
+        - $ref: '#/components/parameters/schoolId'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/academicYearId'
+        - $ref: '#/components/parameters/termId'
+        - $ref: '#/components/parameters/classId'
+      responses:
+        '200': { $ref: '#/components/responses/Data' }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /schools/{schoolId}/reports/students:
+    get:
+      operationId: listStudentReport
+      description: Requires reports.students.read and students.profile.read.
+      parameters:
+        - $ref: '#/components/parameters/schoolId'
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/offset'
+        - $ref: '#/components/parameters/studentStatus'
+        - $ref: '#/components/parameters/search'
+        - $ref: '#/components/parameters/studentSortBy'
+        - $ref: '#/components/parameters/sortOrder'
+      responses:
+        '200': { $ref: '#/components/responses/Page' }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /schools/{schoolId}/reports/attendance:
+    get:
+      operationId: getAttendanceReport
+      description: Requires reports.attendance.read and attendance.register.read.
+      parameters:
+        - $ref: '#/components/parameters/schoolId'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/attendanceType'
+        - $ref: '#/components/parameters/classId'
+      responses:
+        '200': { $ref: '#/components/responses/Data' }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /schools/{schoolId}/reports/academics:
+    get:
+      operationId: getAcademicReport
+      description: Requires reports.academics.read and assessments.read.
+      parameters:
+        - $ref: '#/components/parameters/schoolId'
+        - $ref: '#/components/parameters/academicYearId'
+        - $ref: '#/components/parameters/termId'
+        - $ref: '#/components/parameters/classId'
+      responses:
+        '200': { $ref: '#/components/responses/Data' }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /schools/{schoolId}/reports/finance:
+    get:
+      operationId: getFinanceReport
+      description: Requires reports.finance.read and finance.reports.read. Amounts use exact decimal strings.
+      parameters:
+        - $ref: '#/components/parameters/schoolId'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+      responses:
+        '200': { $ref: '#/components/responses/Data' }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /schools/{schoolId}/reports/staff:
+    get:
+      operationId: listStaffReport
+      description: Requires reports.staff.read and staff.profile.read. Omits contact details.
+      parameters:
+        - $ref: '#/components/parameters/schoolId'
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/offset'
+        - $ref: '#/components/parameters/staffStatus'
+        - $ref: '#/components/parameters/departmentId'
+        - $ref: '#/components/parameters/search'
+        - $ref: '#/components/parameters/staffSortBy'
+        - $ref: '#/components/parameters/sortOrder'
+      responses:
+        '200': { $ref: '#/components/responses/Page' }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /schools/{schoolId}/reports/students/export.csv:
+    get:
+      operationId: exportStudentReportCsv
+      description: Requires reports.exports.generate, reports.students.read and students.profile.read. Maximum 5,000 rows.
+      parameters:
+        - $ref: '#/components/parameters/schoolId'
+        - $ref: '#/components/parameters/studentStatus'
+        - $ref: '#/components/parameters/search'
+        - $ref: '#/components/parameters/studentSortBy'
+        - $ref: '#/components/parameters/sortOrder'
+      responses:
+        '200': { $ref: '#/components/responses/Csv' }
+        '403': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+  /schools/{schoolId}/reports/attendance/export.csv:
+    get:
+      operationId: exportAttendanceReportCsv
+      description: Requires reports.exports.generate, reports.attendance.read and attendance.register.read.
+      parameters:
+        - $ref: '#/components/parameters/schoolId'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/attendanceType'
+        - $ref: '#/components/parameters/classId'
+      responses:
+        '200': { $ref: '#/components/responses/Csv' }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /schools/{schoolId}/reports/academics/export.csv:
+    get:
+      operationId: exportAcademicReportCsv
+      description: Requires reports.exports.generate, reports.academics.read and assessments.read.
+      parameters:
+        - $ref: '#/components/parameters/schoolId'
+        - $ref: '#/components/parameters/academicYearId'
+        - $ref: '#/components/parameters/termId'
+        - $ref: '#/components/parameters/classId'
+      responses:
+        '200': { $ref: '#/components/responses/Csv' }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /schools/{schoolId}/reports/finance/export.csv:
+    get:
+      operationId: exportFinanceReportCsv
+      description: Requires reports.exports.generate, reports.finance.read and finance.reports.read.
+      parameters:
+        - $ref: '#/components/parameters/schoolId'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+      responses:
+        '200': { $ref: '#/components/responses/Csv' }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /schools/{schoolId}/reports/staff/export.csv:
+    get:
+      operationId: exportStaffReportCsv
+      description: Requires reports.exports.generate, reports.staff.read and staff.profile.read. Maximum 5,000 rows.
+      parameters:
+        - $ref: '#/components/parameters/schoolId'
+        - $ref: '#/components/parameters/staffStatus'
+        - $ref: '#/components/parameters/departmentId'
+        - $ref: '#/components/parameters/search'
+        - $ref: '#/components/parameters/staffSortBy'
+        - $ref: '#/components/parameters/sortOrder'
+      responses:
+        '200': { $ref: '#/components/responses/Csv' }
+        '403': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: elimara_session
+  parameters:
+    schoolId:
+      name: schoolId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    from:
+      name: from
+      in: query
+      required: true
+      schema: { type: string, format: date }
+    to:
+      name: to
+      in: query
+      required: true
+      schema: { type: string, format: date }
+    academicYearId:
+      name: academicYearId
+      in: query
+      required: true
+      schema: { type: string, format: uuid }
+    termId:
+      name: termId
+      in: query
+      required: true
+      schema: { type: string, format: uuid }
+    classId:
+      name: classId
+      in: query
+      required: false
+      schema: { type: string, format: uuid }
+    limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+    offset:
+      name: offset
+      in: query
+      schema: { type: integer, minimum: 0, maximum: 1000000, default: 0 }
+    studentStatus:
+      name: status
+      in: query
+      schema: { type: string, enum: [ACTIVE, TRANSFERRED, GRADUATED, WITHDRAWN] }
+    staffStatus:
+      name: status
+      in: query
+      schema: { type: string, enum: [ACTIVE, INACTIVE] }
+    departmentId:
+      name: departmentId
+      in: query
+      schema: { type: string, format: uuid }
+    search:
+      name: search
+      in: query
+      schema: { type: string, minLength: 1, maxLength: 100 }
+    studentSortBy:
+      name: sortBy
+      in: query
+      schema: { type: string, enum: [admissionNumber, familyName, createdAt], default: familyName }
+    staffSortBy:
+      name: sortBy
+      in: query
+      schema: { type: string, enum: [staffNumber, familyName, createdAt], default: familyName }
+    sortOrder:
+      name: sortOrder
+      in: query
+      schema: { type: string, enum: [asc, desc], default: asc }
+    attendanceType:
+      name: type
+      in: query
+      schema: { type: string, enum: [STUDENT_DAILY, STUDENT_LESSON, STAFF_DAILY] }
+  responses:
+    Data:
+      description: Report sourced from existing domain records.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data]
+            properties:
+              data: {}
+    Page:
+      description: Bounded report page.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [data, meta]
+            properties:
+              data: { type: array, items: { type: object } }
+              meta:
+                type: object
+                required: [limit, offset, total]
+                properties:
+                  limit: { type: integer }
+                  offset: { type: integer }
+                  total: { type: integer }
+    Csv:
+      description: Private, no-store CSV attachment.
+      content:
+        text/csv:
+          schema: { type: string }
+    Error:
+      description: Standard API error envelope.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [error]
+            properties:
+              error:
+                type: object
+                required: [code, message]
+                properties:
+                  code: { type: string }
+                  message: { type: string }

@@ -1,0 +1,114 @@
+openapi: 3.1.0
+info:
+  title: Elimara Notifications API
+  version: 1.0.0
+  description: Phase 09 in-app inbox contract proposal; review jointly before treating DTOs as shared contracts.
+servers:
+  - url: /api/v1
+security:
+  - sessionCookie: []
+paths:
+  /schools/{schoolId}/notifications:
+    get:
+      operationId: listOwnNotifications
+      description: Requires communication.notifications.read. Returns only in-app notifications for the authenticated recipient.
+      parameters:
+        - $ref: '#/components/parameters/schoolId'
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/offset'
+      responses:
+        '200':
+          description: Recipient notification page.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Notification' }
+                  meta:
+                    type: object
+                    required: [limit, offset, total]
+                    properties:
+                      limit: { type: integer }
+                      offset: { type: integer }
+                      total: { type: integer }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /schools/{schoolId}/notifications/{notificationId}/read:
+    post:
+      operationId: markOwnNotificationRead
+      description: Requires communication.notifications.read and a valid CSRF token. Only delivered notifications belonging to the authenticated recipient can be marked read.
+      parameters:
+        - $ref: '#/components/parameters/schoolId'
+        - $ref: '#/components/parameters/notificationId'
+        - $ref: '#/components/parameters/csrf'
+      responses:
+        '204': { description: Notification marked read. }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: elimara_session
+  parameters:
+    schoolId:
+      name: schoolId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    notificationId:
+      name: notificationId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+    offset:
+      name: offset
+      in: query
+      schema: { type: integer, minimum: 0, maximum: 1000000, default: 0 }
+    csrf:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      schema: { type: string }
+  schemas:
+    Notification:
+      type: object
+      additionalProperties: false
+      required: [id, title, body, status, createdAt, sentAt, deliveredAt, readAt]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string, maxLength: 120 }
+        body: { type: string, maxLength: 4000 }
+        status: { type: string, enum: [QUEUED, RETRYING, SENT, DELIVERED, FAILED] }
+        createdAt: { type: string, format: date-time }
+        sentAt: { type: [string, 'null'], format: date-time }
+        deliveredAt: { type: [string, 'null'], format: date-time }
+        readAt: { type: [string, 'null'], format: date-time }
+  responses:
+    Error:
+      description: Standard API error envelope.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [error]
+            properties:
+              error:
+                type: object
+                required: [code, message]
+                properties:
+                  code: { type: string }
+                  message: { type: string }

@@ -1,0 +1,1 @@
+# API integration boundary\n\nThis directory is reserved for frontend API integration. It intentionally has\nno client, base URL, authentication behavior, or endpoints until the frontend\nand backend developers agree on a shared API contract.\n

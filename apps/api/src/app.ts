@@ -12,6 +12,7 @@ import { ApiError } from "./http/errors/api-error.js";
 import { errorHandler } from "./http/errors/error-handler.js";
 import { requestIdMiddleware } from "./http/middleware/request-id.js";
 import { createRequestLogger } from "./http/middleware/request-logger.js";
+import { executeWithTimeout } from "./http/utils/timeout.js";
 import { v1Router } from "./http/v1/router.js";
 import { createAdmissionsRouter } from "./modules/admissions/admissions-router.js";
 import type { AdmissionsService } from "./modules/admissions/admissions-service.js";
@@ -83,7 +84,10 @@ export function createApp(config: AppConfig, dependencies: AppDependencies): Exp
 
   app.get("/health/ready", async (_request, response, next) => {
     try {
-      await dependencies.checkDatabase();
+      await executeWithTimeout(
+        () => dependencies.checkDatabase(),
+        config.DATABASE_READY_TIMEOUT_MS,
+      );
       response.status(200).json({ data: { status: "ready" } });
     } catch (error) {
       next(

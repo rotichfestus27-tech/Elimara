@@ -1,3 +1,4 @@
+import { type TransactionTimeoutOptions, resolveTransactionOptions, DEFAULT_TRANSACTION_MAX_WAIT_MS, BATCH_TRANSACTION_TIMEOUT_MS } from "./transaction-options.js";
 import { AcademicRecordStatus, Prisma, type PrismaClient, SchoolStatus } from "@prisma/client";
 import type {
   AllocatePaymentInput,
@@ -97,7 +98,14 @@ const paymentSelect = {
 } satisfies Prisma.FinancialPaymentSelect;
 
 export class PrismaFinanceStore implements FinanceStore {
-  constructor(private readonly prisma: PrismaClient) {}
+  private readonly txOptions: { maxWait: number; timeout: number };
+
+  constructor(
+    private readonly prisma: PrismaClient,
+    options?: TransactionTimeoutOptions,
+  ) {
+    this.txOptions = resolveTransactionOptions(options);
+  }
 
   async listFeeStructures(schoolId: string, query: FinancePageQuery) {
     const where: Prisma.FeeStructureWhereInput = { schoolId };
@@ -287,7 +295,11 @@ export class PrismaFinanceStore implements FinanceStore {
         }));
         return { items, total };
       },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        maxWait: DEFAULT_TRANSACTION_MAX_WAIT_MS,
+        timeout: BATCH_TRANSACTION_TIMEOUT_MS,
+      },
     );
   }
 
@@ -1093,6 +1105,8 @@ export class PrismaFinanceStore implements FinanceStore {
       try {
         return await this.prisma.$transaction(operation, {
           isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          maxWait: this.txOptions.maxWait,
+          timeout: this.txOptions.timeout,
         });
       } catch (error) {
         const retryable =

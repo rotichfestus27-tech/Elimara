@@ -22,7 +22,9 @@ password.
 - A separate `elimara_csrf` cookie holds the CSRF token. For authenticated
   state-changing requests, the client must send the same value in
   `X-CSRF-Token`. The server verifies it against the token hash stored with the
-  session. The session cookie is never exposed to frontend JavaScript.
+  session. The session cookie is never exposed to frontend JavaScript. The web
+  client reads `elimara_csrf` by default; if `CSRF_COOKIE_NAME` is customized,
+  set the same value in `VITE_CSRF_COOKIE_NAME` when building the frontend.
 - Sessions expire absolutely after 12 hours by default (configurable from 1 to
   168 hours), and are rejected after revocation or when the account is not
   active. Logout and password reset revoke sessions.
@@ -35,6 +37,7 @@ password.
 | `POST /api/v1/auth/login` | Public | Rate-limited by normalized account and client address; JSON only; browser `Origin` must be in `CORS_ORIGINS` | Validate credentials and create a session. |
 | `POST /api/v1/auth/logout` | Session cookie + CSRF | Current session only | Revoke the caller's session and clear both cookies. |
 | `GET /api/v1/auth/me` | Session cookie | Authenticated user | Return the minimal current identity. |
+| `GET /api/v1/auth/schools` | Session cookie | Authenticated user | List only the user's active school memberships and currently granted permissions, for workspace selection. |
 | `POST /api/v1/auth/password-reset/request` | Public | Rate-limited when a recovery adapter is configured | Request recovery without revealing whether an account exists. Returns `503` until delivery is configured. |
 | `POST /api/v1/auth/password-reset/complete` | Public, single-use reset token | Valid, unexpired token | Change password, consume the token, revoke sessions, clear cookies. |
 | `GET /api/v1/schools/{schoolId}/access` | Session cookie | Active membership in the selected school | Return minimal context only for an active school membership. `schoolId` is an untrusted selector. |
@@ -142,6 +145,11 @@ school context returns:
 
 Platform context returns `{ "data": { "access": "platform" } }`; it contains no
 school data.
+
+`GET /api/v1/auth/schools` returns `{ "data": [{ "id", "name", "permissions"
+}] }`. Memberships and active school status are resolved server-side. A
+selected school ID remains an untrusted selector and every school API request
+revalidates membership and required permissions.
 
 ## Errors
 

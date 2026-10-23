@@ -1,0 +1,68 @@
+name: Automated Encrypted Offsite Backup
+
+on:
+  schedule:
+    # Run daily at 02:00 UTC (off-peak school hours)
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    # Allow manual operator trigger via GitHub Actions UI
+
+concurrency:
+  group: offsite-backup
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    name: Execute & Verify Offsite Backup
+    runs-on: ubuntu-latest
+    if: github.repository == 'elimara/elimara' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.14.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build database package
+        run: pnpm --filter @elimara/database run build
+
+      - name: Execute encrypted logical backup to Cloudflare R2 / AWS S3
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+          BACKUP_S3_ENDPOINT: ${{ secrets.BACKUP_S3_ENDPOINT }}
+          BACKUP_S3_REGION: ${{ secrets.BACKUP_S3_REGION }}
+          BACKUP_S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+          BACKUP_S3_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
+          BACKUP_S3_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
+          BACKUP_S3_PREFIX: ${{ secrets.BACKUP_S3_PREFIX || 'backups/' }}
+        run: |
+          pnpm --filter @elimara/database run db:backup:create
+
+      - name: Verify backup integrity and unforgeable authentication tag
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+          BACKUP_S3_ENDPOINT: ${{ secrets.BACKUP_S3_ENDPOINT }}
+          BACKUP_S3_REGION: ${{ secrets.BACKUP_S3_REGION }}
+          BACKUP_S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+          BACKUP_S3_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
+          BACKUP_S3_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
+          BACKUP_S3_PREFIX: ${{ secrets.BACKUP_S3_PREFIX || 'backups/' }}
+        run: |
+          pnpm --filter @elimara/database run db:backup:verify

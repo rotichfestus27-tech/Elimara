@@ -18,6 +18,7 @@ import { ZodError } from "zod";
 import { createApp } from "./app.js";
 import { parseEnvironment } from "./config/env.js";
 import { createRequestLogger } from "./http/middleware/request-logger.js";
+import { executeWithTimeout } from "./http/utils/timeout.js";
 import { AdmissionsService } from "./modules/admissions/admissions-service.js";
 import { AssessmentService } from "./modules/assessments/assessment-service.js";
 import { AttendanceService } from "./modules/attendance/attendance-service.js";
@@ -38,6 +39,7 @@ import { StaffService } from "./modules/staff/staff-service.js";
 import { TimetableService } from "./modules/timetable/timetable-service.js";
 
 async function startServer() {
+  dotenv.config();
   dotenv.config({ path: resolve(process.cwd(), "../../.env") });
   const config = parseEnvironment(process.env);
   const logger = pino({ level: config.LOG_LEVEL });
@@ -88,7 +90,13 @@ async function startServer() {
   notificationWorker.start();
   const app = createApp(config, {
     checkDatabase: async () => {
-      await database.$queryRaw`SELECT 1`;
+      await executeWithTimeout(
+        async () => {
+          await database.$queryRaw`SELECT 1`;
+        },
+        config.DATABASE_READY_TIMEOUT_MS,
+        "Database readiness check timed out.",
+      );
     },
     logger: createRequestLogger(config, logger),
     authService,

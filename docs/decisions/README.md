@@ -50,3 +50,18 @@ choices are relied on:
 
 This list is a record of unresolved topics, not an authorization to implement
 them.
+
+## Approved decisions
+
+- [`2026-10-23-database-recovery-and-pitr.md`](2026-10-23-database-recovery-and-pitr.md):
+  Continuous Neon point-in-time recovery (PITR) strategy, non-destructive restore
+  drills on isolated branches, automated verification via `db:verify:restore`,
+  and disaster recovery runbook.
+- [`2026-10-23-automated-encrypted-offsite-backups.md`](2026-10-23-automated-encrypted-offsite-backups.md):
+  Automated client-side AES-256-GCM encrypted offsite backup pipeline targeting
+  private S3/Cloudflare R2 storage, tiered retention policy, and non-destructive
+  restore verification.
+- [`2026-10-26-reporting-indexes-and-baseline-performance.md`](2026-10-26-reporting-indexes-and-baseline-performance.md):
+  Optimized composite reporting indexes for whole-school date-range queries across
+  attendance, financial payments, fee charges, and library loans, with empirical
+  EXPLAIN ANALYZE measurements and concurrent baseline load testing.

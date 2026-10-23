@@ -1,3 +1,4 @@
+import { type TransactionTimeoutOptions, resolveTransactionOptions } from "./transaction-options.js";
 import { NotificationDeliveryStatus, Prisma, type PrismaClient } from "@prisma/client";
 import type {
   ClaimedNotification,
@@ -40,7 +41,14 @@ const notificationSelect = {
 } satisfies Prisma.NotificationSelect;
 
 export class PrismaNotificationStore implements NotificationStore {
-  constructor(private readonly prisma: PrismaClient) {}
+  private readonly txOptions: { maxWait: number; timeout: number };
+
+  constructor(
+    private readonly prisma: PrismaClient,
+    options?: TransactionTimeoutOptions,
+  ) {
+    this.txOptions = resolveTransactionOptions(options);
+  }
 
   async enqueue(input: QueueNotificationInput): Promise<NotificationRecord> {
     for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -97,7 +105,11 @@ export class PrismaNotificationStore implements NotificationStore {
             });
             return mapNotification(notification);
           },
-          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+          {
+            isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+            maxWait: this.txOptions.maxWait,
+            timeout: this.txOptions.timeout,
+          },
         );
       } catch (error) {
         if (
@@ -177,7 +189,8 @@ export class PrismaNotificationStore implements NotificationStore {
     limit: number,
     maxAttempts: number,
   ): Promise<ClaimedNotification[]> {
-    return this.prisma.$transaction(async (tx) => {
+    return this.prisma.$transaction(
+      async (tx) => {
       await tx.$executeRaw`
         UPDATE notifications AS n
         SET status = 'FAILED'::"NotificationDeliveryStatus",

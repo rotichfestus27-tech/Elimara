@@ -44,6 +44,7 @@ const environmentSchema = z.object({
         }, "Each CORS origin must be an HTTP(S) origin without a path, query, or fragment"),
       ),
     ),
+  DATABASE_READY_TIMEOUT_MS: z.coerce.number().int().min(10).max(30_000).default(2_000),
   DATABASE_URL: postgresUrl,
   DIRECT_URL: postgresUrl.optional(),
 });

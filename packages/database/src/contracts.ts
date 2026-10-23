@@ -56,6 +56,7 @@ export interface IdentityStore {
     outcome: "SUCCESS" | "FAILURE";
     requestId: string;
   }): Promise<void>;
+  listSchoolAccess(userId: string): Promise<SchoolAccessRecord[]>;
   getSchoolAccess(userId: string, schoolId: string): Promise<SchoolAccessRecord | null>;
   isPlatformAdmin(userId: string): Promise<boolean>;
   incrementLoginLimits(emailKey: string, addressKey: string, now: Date): Promise<RateLimitResult>;

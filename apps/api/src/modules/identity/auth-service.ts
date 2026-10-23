@@ -118,6 +118,10 @@ export class AuthService {
     return access;
   }
 
+  listSchoolAccess(userId: string): Promise<SchoolAccessRecord[]> {
+    return this.store.listSchoolAccess(userId);
+  }
+
   async requirePlatformAdmin(userId: string, mfaVerifiedAt: Date | null): Promise<void> {
     if (!(await this.store.isPlatformAdmin(userId))) {
       throw new ApiError(403, "FORBIDDEN", "You are not authorized to perform this action.");

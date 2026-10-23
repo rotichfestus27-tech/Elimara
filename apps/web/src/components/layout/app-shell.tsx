@@ -10,6 +10,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/app/auth-provider";
 
 function Brand() {
   return (
@@ -22,7 +23,7 @@ function Brand() {
           Elimara
         </span>
         <span className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-          School OS
+          School management
         </span>
       </span>
     </div>
@@ -87,6 +88,8 @@ type SidebarContentProps = {
 };
 
 function SidebarContent({ onNavigate }: SidebarContentProps) {
+  const { school, user, logout, schools, selectSchool } = useAuth();
+  const [logoutError, setLogoutError] = useState<string | null>(null);
   return (
     <div className="flex h-full flex-col">
       <Brand />
@@ -95,11 +98,23 @@ function SidebarContent({ onNavigate }: SidebarContentProps) {
           Workspace
         </p>
         <p className="mt-1.5 truncate text-sm font-semibold text-foreground">
-          School workspace
+          {school?.name ?? "School workspace"}
         </p>
-        <p className="mt-0.5 text-[11px] text-muted-foreground">
-          Preview environment
-        </p>
+        {schools.length > 1 && (
+          <label className="mt-2 block">
+            <span className="sr-only">Select school</span>
+            <select
+              aria-label="Select school"
+              className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
+              onChange={(event) => selectSchool(event.target.value)}
+              value={school?.id}
+            >
+              {schools.map((item) => (
+                <option key={item.id} value={item.id}>{item.name}</option>
+              ))}
+            </select>
+          </label>
+        )}
       </div>
       <p className="mb-2 px-6 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
         Menu
@@ -107,12 +122,17 @@ function SidebarContent({ onNavigate }: SidebarContentProps) {
       <NavigationLinks onNavigate={onNavigate} />
       <div className="mt-auto px-4 py-4">
         <div className="rounded-xl border border-dashed bg-muted/30 px-3.5 py-3">
-          <p className="text-xs font-semibold text-foreground">
-            Preview workspace
-          </p>
-          <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-            Pages are previews. School data is not connected.
-          </p>
+          <p className="truncate text-xs font-semibold text-foreground">{user?.email}</p>
+          <button
+            className="mt-2 text-xs text-primary underline"
+            onClick={() => void logout().catch((error: unknown) =>
+              setLogoutError(error instanceof Error ? error.message : "Sign out failed."),
+            )}
+            type="button"
+          >
+            Sign out
+          </button>
+          {logoutError && <p role="alert" className="mt-2 text-xs text-destructive">{logoutError}</p>}
         </div>
       </div>
     </div>
@@ -120,6 +140,7 @@ function SidebarContent({ onNavigate }: SidebarContentProps) {
 }
 
 export function AppShell() {
+  const { school } = useAuth();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const location = useLocation();
   const currentPath = location.pathname.replace(/\/+$/, "") || "/";
@@ -159,8 +180,8 @@ export function AppShell() {
               </SheetContent>
             </Sheet>
             <div className="min-w-0">
-              <p className="hidden text-[11px] font-medium text-muted-foreground sm:block">
-                School workspace
+              <p className="hidden max-w-48 truncate text-[11px] font-medium text-muted-foreground sm:block">
+                {school?.name ?? "School workspace"}
               </p>
               <h1 className="truncate text-sm font-semibold text-foreground">
                 {activeItem.label}
@@ -168,7 +189,7 @@ export function AppShell() {
             </div>
           </div>
           <span className="rounded-full border bg-card px-2.5 py-1 text-[10px] font-semibold text-muted-foreground sm:px-3 sm:text-[11px]">
-            Preview
+            Authenticated
           </span>
         </header>
         <main className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6 sm:py-8 lg:px-8">

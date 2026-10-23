@@ -1,5 +1,5 @@
 {
-  "name": "@school-os/web",
+  "name": "@elimara/web",
   "private": true,
   "type": "module",
   "scripts": {
@@ -34,4 +34,3 @@
     "vite": "^8.3.4"
   }
 }
-

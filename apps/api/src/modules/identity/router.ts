@@ -79,6 +79,16 @@ export function createIdentityRouter(service: AuthService, config: AppConfig): R
     response.json({ data: { user: response.locals.auth?.user } });
   });
 
+  router.get("/auth/schools", authenticate, async (_request, response, next) => {
+    try {
+      const auth = response.locals.auth;
+      if (!auth) throw new ApiError(401, "UNAUTHENTICATED", "Authentication is required.");
+      response.json({ data: await service.listSchoolAccess(auth.user.id) });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.post(
     "/auth/password-reset/request",
     validateRequest({ body: resetRequestBodySchema }),

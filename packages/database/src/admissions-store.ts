@@ -1,3 +1,4 @@
+import { type TransactionTimeoutOptions, resolveTransactionOptions } from "./transaction-options.js";
 import { Prisma, SchoolStatus, type PrismaClient } from "@prisma/client";
 import type {
   AdmissionApplicationPageQuery,
@@ -47,7 +48,14 @@ export class AdmissionsStoreError extends Error {
 }
 
 export class PrismaAdmissionsStore implements AdmissionsStore {
-  constructor(private readonly prisma: PrismaClient) {}
+  private readonly txOptions: { maxWait: number; timeout: number };
+
+  constructor(
+    private readonly prisma: PrismaClient,
+    options?: TransactionTimeoutOptions,
+  ) {
+    this.txOptions = resolveTransactionOptions(options);
+  }
 
   async createApplication(
     input: CreateAdmissionApplicationInput,
@@ -867,6 +875,8 @@ export class PrismaAdmissionsStore implements AdmissionsStore {
       try {
         return await this.prisma.$transaction(operation, {
           isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          maxWait: this.txOptions.maxWait,
+          timeout: this.txOptions.timeout,
         });
       } catch (error) {
         if (isSerializationFailure(error) && attempt < 2) {

@@ -13,6 +13,39 @@ import { ReportsPage } from "@/pages/reports-page";
 import { SettingsPage } from "@/pages/settings-page";
 import { PlaceholderPage } from "@/pages/placeholder-page";
 import { navigationItems } from "@/config/navigation";
+import { useAuth } from "@/app/auth-provider";
+import { LoginPage } from "@/pages/login-page";
+import { Button } from "@/components/ui/button";
+
+function WorkspaceSelection() {
+  const { schools, selectSchool, user } = useAuth();
+  if (schools.length === 0) {
+    return (
+      <main className="mx-auto flex min-h-screen max-w-xl flex-col items-center justify-center gap-4 p-6 text-center">
+        <h1 className="text-2xl font-semibold">No active school access</h1>
+        <p className="text-sm text-muted-foreground">
+          {user?.email} is signed in, but no active school membership is available.
+          Ask your school administrator to grant access.
+        </p>
+      </main>
+    );
+  }
+  return (
+    <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center gap-4 p-6">
+      <h1 className="text-2xl font-semibold">Choose a school</h1>
+      {schools.map((school) => (
+        <Button
+          className="h-auto justify-start py-4"
+          key={school.id}
+          onClick={() => selectSchool(school.id)}
+          variant="outline"
+        >
+          {school.name}
+        </Button>
+      ))}
+    </main>
+  );
+}
 
 const pageRoutes = [
   { href: "/dashboard", element: <DashboardPage /> },
@@ -29,6 +62,13 @@ const pageRoutes = [
 ];
 
 export function AppRouter() {
+  const { user, school, loading } = useAuth();
+  if (loading) {
+    return <main className="p-8 text-sm text-muted-foreground">Checking your session...</main>;
+  }
+  if (!user) return <LoginPage />;
+  if (!school) return <WorkspaceSelection />;
+
   return (
     <Routes>
       <Route element={<AppShell />}>

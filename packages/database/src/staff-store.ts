@@ -1,3 +1,4 @@
+import { type TransactionTimeoutOptions, resolveTransactionOptions } from "./transaction-options.js";
 import {
   AcademicRecordStatus,
   Prisma,
@@ -51,7 +52,14 @@ export class StaffStoreError extends Error {
 }
 
 export class PrismaStaffStore implements StaffStore {
-  constructor(private readonly prisma: PrismaClient) {}
+  private readonly txOptions: { maxWait: number; timeout: number };
+
+  constructor(
+    private readonly prisma: PrismaClient,
+    options?: TransactionTimeoutOptions,
+  ) {
+    this.txOptions = resolveTransactionOptions(options);
+  }
 
   async listDepartments(
     schoolId: string,
@@ -636,6 +644,8 @@ export class PrismaStaffStore implements StaffStore {
     try {
       return await this.prisma.$transaction(work, {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        maxWait: this.txOptions.maxWait,
+        timeout: this.txOptions.timeout,
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {

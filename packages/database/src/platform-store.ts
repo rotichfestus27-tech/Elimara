@@ -1,3 +1,4 @@
+import { type TransactionTimeoutOptions, resolveTransactionOptions } from "./transaction-options.js";
 import { Prisma, type PrismaClient, SchoolStatus, UserStatus } from "@prisma/client";
 import type {
   ChangePlatformSchoolStatusInput,
@@ -21,7 +22,21 @@ import type {
 import { PlatformAdminStoreError } from "./platform-contracts.js";
 
 export class PrismaPlatformAdminStore implements PlatformAdminStore {
-  constructor(private readonly prisma: PrismaClient) {}
+  private readonly txOptions: { maxWait: number; timeout: number };
+
+  constructor(
+    private readonly prisma: PrismaClient,
+    options?: TransactionTimeoutOptions,
+  ) {
+    this.txOptions = resolveTransactionOptions(options);
+  }
+
+  private transaction<T>(operation: (tx: Transaction) => Promise<T>): Promise<T> {
+    return this.prisma.$transaction(operation, {
+      maxWait: this.txOptions.maxWait,
+      timeout: this.txOptions.timeout,
+    });
+  }
 
   async listSchools(query: PlatformSchoolListQuery): Promise<PlatformPage<PlatformSchoolRecord>> {
     const where: Prisma.SchoolWhereInput = {
@@ -45,7 +60,7 @@ export class PrismaPlatformAdminStore implements PlatformAdminStore {
   }
 
   async createSchool(input: CreatePlatformSchoolInput): Promise<PlatformSchoolRecord> {
-    return this.prisma.$transaction(async (transaction) => {
+    return this.transaction(async (transaction) => {
       const school = await transaction.school.create({
         data: {
           name: input.name,
@@ -63,7 +78,7 @@ export class PrismaPlatformAdminStore implements PlatformAdminStore {
   }
 
   async updateSchool(input: UpdatePlatformSchoolInput): Promise<PlatformSchoolRecord | null> {
-    return this.prisma.$transaction(async (transaction) => {
+    return this.transaction(async (transaction) => {
       const school = await transaction.school.updateMany({
         where: { id: input.schoolId },
         data: {
@@ -88,7 +103,7 @@ export class PrismaPlatformAdminStore implements PlatformAdminStore {
   async changeSchoolStatus(
     input: ChangePlatformSchoolStatusInput,
   ): Promise<PlatformSchoolRecord | null> {
-    return this.prisma.$transaction(async (transaction) => {
+    return this.transaction(async (transaction) => {
       const locked = await lockSchool(transaction, input.schoolId);
       if (!locked) return null;
       const current = await transaction.school.findUnique({
@@ -146,7 +161,7 @@ export class PrismaPlatformAdminStore implements PlatformAdminStore {
 
   async createPlan(input: CreateSaasPlanInput): Promise<SaasPlanRecord> {
     try {
-      return await this.prisma.$transaction(async (transaction) => {
+      return await this.transaction(async (transaction) => {
         const plan = await transaction.saasPlan.create({
           data: {
             code: input.code,
@@ -171,7 +186,7 @@ export class PrismaPlatformAdminStore implements PlatformAdminStore {
 
   async updatePlan(input: UpdateSaasPlanInput): Promise<SaasPlanRecord | null> {
     try {
-      return await this.prisma.$transaction(async (transaction) => {
+      return await this.transaction(async (transaction) => {
         const current = await transaction.saasPlan.findUnique({
           where: { id: input.planId },
         });
@@ -264,7 +279,7 @@ export class PrismaPlatformAdminStore implements PlatformAdminStore {
         replacedSubscriptionId: current?.id ?? null,
       });
       return mapSubscription(subscription, locked.name);
-    });
+    }, this.txOptions);
   }
 
   async endSubscription(input: {
@@ -272,7 +287,7 @@ export class PrismaPlatformAdminStore implements PlatformAdminStore {
     requestId: string;
     schoolId: string;
   }): Promise<SchoolSubscriptionRecord | null> {
-    return this.prisma.$transaction(async (transaction) => {
+    return this.transaction(async (transaction) => {
       const locked = await lockSchool(transaction, input.schoolId);
       if (!locked) return null;
       const current = await transaction.schoolSubscription.findFirst({
@@ -375,7 +390,7 @@ export class PrismaPlatformAdminStore implements PlatformAdminStore {
     secret: string;
     expiresAt: Date;
   }): Promise<boolean> {
-    return this.prisma.$transaction(async (transaction) => {
+    return this.transaction(async (transaction) => {
       const result = await transaction.platformAdminAssignment.updateMany({
         where: {
           userId: input.userId,
@@ -403,7 +418,7 @@ export class PrismaPlatformAdminStore implements PlatformAdminStore {
     now: Date;
     requestId: string;
   }): Promise<boolean> {
-    return this.prisma.$transaction(async (transaction) => {
+    return this.transaction(async (transaction) => {
       const result = await transaction.platformAdminAssignment.updateMany({
         where: {
           userId: input.actorUserId,
@@ -445,7 +460,7 @@ export class PrismaPlatformAdminStore implements PlatformAdminStore {
     now: Date;
     requestId: string;
   }): Promise<boolean> {
-    return this.prisma.$transaction(async (transaction) => {
+    return this.transaction(async (transaction) => {
       const result = await transaction.platformAdminAssignment.updateMany({
         where: {
           userId: input.actorUserId,
@@ -586,11 +601,15 @@ function isUniqueViolation(error: unknown): boolean {
 async function serializable<T>(
   prisma: PrismaClient,
   operation: (transaction: Transaction) => Promise<T>,
+  options?: { maxWait: number; timeout: number },
 ): Promise<T> {
+  const txOptions = resolveTransactionOptions(options);
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       return await prisma.$transaction(operation, {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        maxWait: txOptions.maxWait,
+        timeout: txOptions.timeout,
       });
     } catch (error) {
       if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2034") {

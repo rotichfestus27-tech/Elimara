@@ -125,6 +125,13 @@ export class FakeIdentityStore implements IdentityStore {
     return entry?.userId === userId ? entry.access : null;
   }
 
+  async listSchoolAccess(userId: string): Promise<SchoolAccessRecord[]> {
+    return [...this.schools.values()]
+      .filter((entry) => entry.userId === userId)
+      .map((entry) => entry.access)
+      .sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id));
+  }
+
   async isPlatformAdmin(userId: string): Promise<boolean> {
     return this.platformAdmins.has(userId);
   }

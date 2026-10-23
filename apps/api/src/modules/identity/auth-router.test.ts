@@ -47,9 +47,12 @@ describe("authentication HTTP routes", () => {
     const { app } = setup();
 
     const response = await request(app).get("/api/v1/auth/me");
+    const schools = await request(app).get("/api/v1/auth/schools");
 
     expect(response.status).toBe(401);
     expect(response.body.error.code).toBe("UNAUTHENTICATED");
+    expect(schools.status).toBe(401);
+    expect(schools.body.error.code).toBe("UNAUTHENTICATED");
   });
 
   it("rejects incorrect credentials without disclosing the submitted password", async () => {
@@ -159,6 +162,12 @@ describe("authentication HTTP routes", () => {
     expect(login.body.data.user).toEqual({
       id: "user-a",
       email: "admin@school-a.test",
+    });
+    await expect(agent.get("/api/v1/auth/schools")).resolves.toMatchObject({
+      status: 200,
+      body: {
+        data: [{ id: schoolAId, name: "School A", permissions: [] }],
+      },
     });
     await expect(agent.get("/api/v1/auth/me")).resolves.toMatchObject({
       status: 200,

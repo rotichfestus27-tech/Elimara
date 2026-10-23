@@ -1,4 +1,5 @@
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
+export { Prisma, PrismaClient };
 
 export type {
   AdmissionApplicationPageQuery,
@@ -230,3 +231,20 @@ export function createDatabaseClient(databaseUrl: string): PrismaClient {
     },
   });
 }
+
+export type { SystemPermissionDefinition, SystemPermissionKey } from "./permissions-catalog.js";
+export { SYSTEM_PERMISSIONS, seedSystemPermissions } from "./permissions-catalog.js";
+
+export type { TransactionTimeoutOptions } from "./transaction-options.js";
+export {
+  DEFAULT_TRANSACTION_TIMEOUT_MS,
+  DEFAULT_TRANSACTION_MAX_WAIT_MS,
+  BATCH_TRANSACTION_TIMEOUT_MS,
+  resolveTransactionOptions,
+} from "./transaction-options.js";
+
+export * from "./backup/crypto.js";
+export * from "./backup/storage.js";
+export * from "./backup/dump-engine.js";
+export * from "./backup/backup-service.js";
+

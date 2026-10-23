@@ -604,6 +604,7 @@ model Assessment {
   @@unique([schoolId, termId, classSubjectAssignmentId, nameKey], map: "assessments_school_term_subject_name_key")
   @@index([schoolId, academicYearId, termId, startsOn], map: "assessments_school_term_date_idx")
   @@index([schoolId, classId, streamId, status], map: "assessments_school_class_status_idx")
+  @@index([schoolId, gradingScaleId], map: "assessments_school_grading_scale_idx")
   @@map("assessments")
 }
 
@@ -696,6 +697,7 @@ model AttendanceRegister {
   @@unique([schoolId, id])
   @@index([schoolId, academicYearId, date, type], map: "attendance_registers_school_year_date_type_idx")
   @@index([schoolId, classId, streamId, date], map: "attendance_registers_school_class_date_idx")
+  @@index([schoolId, date, type], map: "attendance_registers_school_date_type_idx")
   @@map("attendance_registers")
 }
 
@@ -724,6 +726,7 @@ model AttendanceRecord {
   @@index([schoolId, registerId, status], map: "attendance_records_school_register_status_idx")
   @@index([schoolId, studentId, markedAt], map: "attendance_records_school_student_marked_at_idx")
   @@index([schoolId, staffId, markedAt], map: "attendance_records_school_staff_marked_at_idx")
+  @@index([schoolId, reasonId], map: "attendance_records_school_reason_idx")
   @@map("attendance_records")
 }
 
@@ -1146,8 +1149,10 @@ model SchoolRole {
 }
 
 model Permission {
-  key   String                 @id @db.VarChar(120)
-  roles SchoolRolePermission[]
+  key         String                 @id @db.VarChar(120)
+  description String                 @db.Text
+  createdAt   DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  roles       SchoolRolePermission[]
 
   @@map("permissions")
 }
@@ -1367,13 +1372,15 @@ model LibraryLoan {
   copy            LibraryCopy    @relation(fields: [schoolId, itemId, copyId], references: [schoolId, itemId, id], onDelete: Restrict)
   student         Student?       @relation(fields: [schoolId, studentId], references: [schoolId, id], onDelete: Restrict)
   staff           Staff?         @relation(fields: [schoolId, staffId], references: [schoolId, id], onDelete: Restrict)
-  academicClass   AcademicClass? @relation(fields: [academicClassId], references: [id])
-  academicClassId String?        @db.Uuid
+  academicClassId String?        @map("academic_class_id") @db.Uuid
+  academicClass   AcademicClass? @relation(fields: [schoolId, academicClassId], references: [schoolId, id], onDelete: Restrict)
 
   @@unique([schoolId, id])
   @@index([schoolId, studentId, checkedOutAt], map: "library_loans_school_student_checkout_idx")
   @@index([schoolId, staffId, checkedOutAt], map: "library_loans_school_staff_checkout_idx")
   @@index([schoolId, itemId, checkedOutAt], map: "library_loans_school_item_checkout_idx")
+  @@index([schoolId, academicClassId], map: "library_loans_school_academic_class_idx")
+  @@index([schoolId, checkedOutAt, returnedAt], map: "library_loans_school_checkout_returned_idx")
   @@map("library_loans")
 }
 
@@ -1395,13 +1402,14 @@ model LibraryReservation {
   copy            LibraryCopy?             @relation(fields: [schoolId, itemId, copyId], references: [schoolId, itemId, id], onDelete: Restrict)
   student         Student?                 @relation(fields: [schoolId, studentId], references: [schoolId, id], onDelete: Restrict)
   staff           Staff?                   @relation(fields: [schoolId, staffId], references: [schoolId, id], onDelete: Restrict)
-  academicClass   AcademicClass?           @relation(fields: [academicClassId], references: [id])
-  academicClassId String?                  @db.Uuid
+  academicClassId String?                  @map("academic_class_id") @db.Uuid
+  academicClass   AcademicClass?           @relation(fields: [schoolId, academicClassId], references: [schoolId, id], onDelete: Restrict)
 
   @@unique([schoolId, id])
   @@index([schoolId, itemId, status, createdAt, id], map: "library_reservations_school_queue_idx")
   @@index([schoolId, studentId, status], map: "library_reservations_school_student_status_idx")
   @@index([schoolId, staffId, status], map: "library_reservations_school_staff_status_idx")
+  @@index([schoolId, academicClassId], map: "library_reservations_school_academic_class_idx")
   @@map("library_reservations")
 }
 
@@ -1497,6 +1505,8 @@ model StudentFeeCharge {
   @@unique([schoolId, accountId, id], map: "student_fee_charges_school_account_id_key")
   @@unique([schoolId, accountId, idempotencyKey], map: "student_fee_charges_school_account_idempotency_key")
   @@index([schoolId, accountId, createdAt], map: "student_fee_charges_school_account_created_idx")
+  @@index([schoolId, feeStructureId], map: "student_fee_charges_school_fee_structure_idx")
+  @@index([schoolId, createdAt], map: "student_fee_charges_school_created_idx")
   @@map("student_fee_charges")
 }
 
@@ -1538,6 +1548,7 @@ model FinancialPayment {
   @@unique([schoolId, accountId, idempotencyKey], map: "financial_payments_school_account_idempotency_key")
   @@unique([schoolId, reference], map: "financial_payments_school_reference_key")
   @@index([schoolId, accountId, receivedAt], map: "financial_payments_school_account_received_idx")
+  @@index([schoolId, receivedAt], map: "financial_payments_school_received_idx")
   @@map("financial_payments")
 }
 

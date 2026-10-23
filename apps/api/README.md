@@ -1,9 +1,9 @@
 # Backend foundation
 
-This package contains the API runtime, the Phase 02 authentication,
-authorization, and tenant-security foundation, and the approved Phase 03 school
-profile and academic-configuration endpoints. Admissions, attendance,
-examinations, and other business modules are not implemented.
+This package contains the API runtime, authentication and authorization, and
+the currently implemented school-management API modules. See `docs/api` for
+each module's supported workflows and contract. Frontend route placeholders do
+not imply API support.
 
 ## Prerequisites
 
@@ -38,6 +38,10 @@ Start the API from the root:
 corepack pnpm dev
 ```
 
+Start the frontend in another terminal with `corepack pnpm dev:web`, or start
+both applications with `corepack pnpm dev:all`. Vite proxies `/api` to the
+local API server by default.
+
 The API listens on `PORT` (default `3000`). `GET /health/live` checks only that
 the process is responding. `GET /health/ready` performs a database query and
 returns `503` if the configured database cannot be reached. Readiness does not
@@ -58,6 +62,7 @@ run migrations or disclose connection details.
 | `COOKIE_DOMAIN` | No | Cookie domain when explicitly required by deployment topology. |
 | `TRUST_PROXY_HOPS` | No | Trusted reverse-proxy hop count used to derive client IP for rate limits; defaults to `0`. Set only for a known proxy topology. |
 | `RATE_LIMIT_HMAC_KEY` | Yes | Random secret of at least 32 characters used to pseudonymize login/recovery rate-limit keys. Use a unique secret per environment. |
+| `DATABASE_READY_TIMEOUT_MS` | No | Strict database readiness check timeout in milliseconds (10 to 30000); defaults to `2000`. Returns HTTP 503 if exceeded. |
 | `DATABASE_URL` | Yes | Neon pooled PostgreSQL URL for application runtime. Keep credentials secret. |
 | `DIRECT_URL` | No for API runtime; required for Prisma CLI operations | Neon direct/unpooled URL for Prisma CLI migration operations where required. Keep credentials secret and out of runtime deployment configuration when not needed. |
 

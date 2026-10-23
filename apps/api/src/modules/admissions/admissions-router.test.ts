@@ -228,8 +228,11 @@ describe("admissions and student API", () => {
       [firstAdmission.status, idempotentRetry.status, concurrentAdmission.status].sort(),
     ).toEqual([200, 201, 201]);
     expect(firstAdmission.body.data.id).toBe(idempotentRetry.body.data.id);
-    expect(firstAdmission.body.data.admissionNumber).toBe("2026/001");
-    expect(concurrentAdmission.body.data.admissionNumber).toBe("2026/002");
+    const assignedNumbers = [
+      firstAdmission.body.data.admissionNumber,
+      concurrentAdmission.body.data.admissionNumber,
+    ].sort();
+    expect(assignedNumbers).toEqual(["2026/001", "2026/002"]);
     expect(admissionsStore.students.size).toBe(2);
     expect(admissionsStore.studentGuardians).toHaveLength(2);
     expect(admissionsStore.studentGuardians[0]?.authorizedAccess).toBe(true);

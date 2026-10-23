@@ -1,3 +1,4 @@
+import { type TransactionTimeoutOptions, resolveTransactionOptions } from "./transaction-options.js";
 import {
   Prisma,
   type PrismaClient,
@@ -24,7 +25,14 @@ import type {
 import { LibraryStoreError } from "./library-contracts.js";
 
 export class PrismaLibraryStore implements LibraryStore {
-  constructor(private readonly prisma: PrismaClient) {}
+  private readonly txOptions: { maxWait: number; timeout: number };
+
+  constructor(
+    private readonly prisma: PrismaClient,
+    options?: TransactionTimeoutOptions,
+  ) {
+    this.txOptions = resolveTransactionOptions(options);
+  }
 
   async listCategories(
     schoolId: string,
@@ -637,6 +645,8 @@ export class PrismaLibraryStore implements LibraryStore {
     return this.guard(() =>
       this.prisma.$transaction(operation, {
         isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
+        maxWait: this.txOptions.maxWait,
+        timeout: this.txOptions.timeout,
       }),
     );
   }

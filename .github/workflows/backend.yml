@@ -11,18 +11,106 @@ permissions:
 jobs:
   checks:
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: elimara_admin
+          POSTGRES_PASSWORD: elimara_admin_password
+          POSTGRES_DB: elimara_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      RATE_LIMIT_HMAC_KEY: ci-rate-limit-hmac-key-must-be-at-least-32-chars
+      PLATFORM_MFA_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: pnpm/action-setup@v4
         with:
           version: 12.14.0
+
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm format:check
-      - run: pnpm lint
-      - run: pnpm typecheck
-      - run: pnpm test
-      - run: pnpm build
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Code format check
+        run: pnpm format:check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Validate Prisma schema syntax
+        env:
+          DATABASE_URL: postgresql://elimara_migrator:elimara_migrator_password@localhost:5432/elimara_test
+          DIRECT_URL: postgresql://elimara_migrator:elimara_migrator_password@localhost:5432/elimara_test
+        run: |
+          pnpm --filter @elimara/database run db:validate
+
+      - name: Build database package (generate Prisma Client & compile TypeScript)
+        run: pnpm --filter @elimara/database run build
+
+      - name: Provision PostgreSQL least-privilege roles (elimara_migrator and elimara_app)
+        env:
+          ADMIN_DATABASE_URL: postgresql://elimara_admin:elimara_admin_password@localhost:5432/elimara_test
+        run: |
+          pnpm --filter @elimara/database run db:roles:provision
+
+      - name: Apply Prisma migrations using migration role (elimara_migrator)
+        env:
+          DATABASE_URL: postgresql://elimara_migrator:elimara_migrator_password@localhost:5432/elimara_test
+          DIRECT_URL: postgresql://elimara_migrator:elimara_migrator_password@localhost:5432/elimara_test
+        run: |
+          pnpm --filter @elimara/database run db:migrate:deploy
+
+      - name: Verify migration status
+        env:
+          DATABASE_URL: postgresql://elimara_migrator:elimara_migrator_password@localhost:5432/elimara_test
+          DIRECT_URL: postgresql://elimara_migrator:elimara_migrator_password@localhost:5432/elimara_test
+        run: |
+          pnpm --filter @elimara/database run db:migrate:status
+
+      - name: Check for schema drift against PostgreSQL database
+        env:
+          DATABASE_URL: postgresql://elimara_migrator:elimara_migrator_password@localhost:5432/elimara_test
+          DIRECT_URL: postgresql://elimara_migrator:elimara_migrator_password@localhost:5432/elimara_test
+        run: |
+          pnpm --filter @elimara/database run db:drift:check
+
+      - name: Verify database integrity, permissions, triggers, and tenant constraints
+        env:
+          DATABASE_URL: postgresql://elimara_migrator:elimara_migrator_password@localhost:5432/elimara_test
+          DIRECT_URL: postgresql://elimara_migrator:elimara_migrator_password@localhost:5432/elimara_test
+        run: |
+          pnpm --filter @elimara/database run db:verify:integrity
+
+      - name: Typecheck monorepo
+        run: pnpm typecheck
+
+      - name: Run fast unit tests
+        env:
+          DATABASE_URL: postgresql://elimara_app:elimara_app_password@localhost:5432/elimara_test
+        run: |
+          pnpm test
+
+      - name: Run PostgreSQL integration test suite using runtime role (elimara_app)
+        env:
+          DATABASE_URL: postgresql://elimara_app:elimara_app_password@localhost:5432/elimara_test
+          DIRECT_URL: postgresql://elimara_app:elimara_app_password@localhost:5432/elimara_test
+        run: |
+          pnpm test:integration
+
+      - name: Build all packages
+        run: pnpm build

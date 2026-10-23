@@ -5,12 +5,10 @@ parallel backend and frontend work. The initial technology direction is React,
 TypeScript, Vite, and Tailwind CSS for the frontend; Node.js, Express, and
 TypeScript for the backend; and Neon PostgreSQL with Prisma for the database.
 
-This repository contains the monorepo and backend runtime foundations,
-authentication/security endpoints, the Phase 03 school profile and academic
-configuration API, the Phase 04 admissions and student-record foundation, the
-Phase 05 staff-management API, Phase 06 attendance and timetable APIs, and
-Phase 07 assessment and results APIs. Finance, payroll, curriculum-specific
-grading, and other later business domains are not implemented.
+This repository contains the Elimara frontend, backend, Prisma data layer, and
+the currently implemented school-management APIs. Consult the module API
+contracts for precise feature coverage; an item in frontend navigation is not
+an indication that an API workflow is available.
 Read the project guidance before starting work:
 
 - [Architecture overview](docs/architecture/overview.md)
@@ -45,6 +43,19 @@ only safe placeholders. Node.js 24 is the current tested baseline; the
 supported version range still requires developer approval. Never connect
 development workflows to production services or databases. See the
 [development workflow](docs/workflows/development.md) for safety requirements.
+
+Run both applications in development from separate terminals:
+
+```text
+corepack pnpm dev
+corepack pnpm dev:web
+```
+
+Or start both with `corepack pnpm dev:all`. The web app proxies `/api` to
+`http://127.0.0.1:3000` by default. Configure `VITE_API_PROXY_TARGET` for a
+different local API address. `VITE_API_BASE_URL` is intended for a frontend
+built against an explicitly configured API origin. The frontend uses secure
+session cookies and does not store authentication tokens in browser storage.
 
 Authentication endpoint contracts are documented in
 [`docs/api/authentication.md`](docs/api/authentication.md). The supplied

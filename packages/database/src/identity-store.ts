@@ -1,3 +1,4 @@
+import { type TransactionTimeoutOptions, resolveTransactionOptions } from "./transaction-options.js";
 import { AccountTokenPurpose, MembershipStatus, SchoolStatus, UserStatus } from "@prisma/client";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import type {
@@ -8,8 +9,35 @@ import type {
   UserRecord,
 } from "./contracts.js";
 
+type SchoolMembershipAccess = {
+  school: { id: string; name: string };
+  roleGrants: Array<{
+    role: { permissions: Array<{ permissionKey: string }> };
+  }>;
+};
+
+function mapSchoolAccess(membership: SchoolMembershipAccess): SchoolAccessRecord {
+  const permissions = new Set(
+    membership.roleGrants.flatMap((grant) =>
+      grant.role.permissions.map((permission) => permission.permissionKey),
+    ),
+  );
+  return {
+    id: membership.school.id,
+    name: membership.school.name,
+    permissions: [...permissions].sort(),
+  };
+}
+
 export class PrismaIdentityStore implements IdentityStore {
-  constructor(private readonly prisma: PrismaClient) {}
+  private readonly txOptions: { maxWait: number; timeout: number };
+
+  constructor(
+    private readonly prisma: PrismaClient,
+    options?: TransactionTimeoutOptions,
+  ) {
+    this.txOptions = resolveTransactionOptions(options);
+  }
 
   async findUserByEmail(email: string): Promise<UserRecord | null> {
     return this.prisma.user.findUnique({
@@ -38,8 +66,9 @@ export class PrismaIdentityStore implements IdentityStore {
     },
     requestId: string,
   ): Promise<void> {
-    await this.prisma.$transaction(async (transaction) => {
-      await transaction.userSession.create({ data: input });
+    await this.prisma.$transaction(
+      async (transaction) => {
+        await transaction.userSession.create({ data: input });
       await transaction.securityAuditEvent.create({
         data: {
           actorUserId: input.userId,
@@ -48,7 +77,9 @@ export class PrismaIdentityStore implements IdentityStore {
           requestId,
         },
       });
-    });
+      },
+      { maxWait: this.txOptions.maxWait, timeout: this.txOptions.timeout },
+    );
   }
 
   async revokeSession(
@@ -57,8 +88,9 @@ export class PrismaIdentityStore implements IdentityStore {
     now: Date,
     requestId: string,
   ): Promise<void> {
-    await this.prisma.$transaction(async (transaction) => {
-      await transaction.userSession.updateMany({
+    await this.prisma.$transaction(
+      async (transaction) => {
+        await transaction.userSession.updateMany({
         where: { tokenHash, userId, revokedAt: null },
         data: { revokedAt: now },
       });
@@ -154,7 +186,11 @@ export class PrismaIdentityStore implements IdentityStore {
         });
         return true;
       },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        maxWait: this.txOptions.maxWait,
+        timeout: this.txOptions.timeout,
+      },
     );
   }
 
@@ -207,19 +243,33 @@ export class PrismaIdentityStore implements IdentityStore {
       },
     });
 
-    if (!membership) return null;
+    return membership ? mapSchoolAccess(membership) : null;
+  }
 
-    const permissions = new Set(
-      membership.roleGrants.flatMap((grant) =>
-        grant.role.permissions.map((permission) => permission.permissionKey),
-      ),
-    );
-
-    return {
-      id: membership.school.id,
-      name: membership.school.name,
-      permissions: [...permissions].sort(),
-    };
+  async listSchoolAccess(userId: string): Promise<SchoolAccessRecord[]> {
+    const memberships = await this.prisma.schoolMembership.findMany({
+      where: {
+        userId,
+        status: MembershipStatus.ACTIVE,
+        user: { status: UserStatus.ACTIVE },
+        school: { status: SchoolStatus.ACTIVE },
+      },
+      select: {
+        school: { select: { id: true, name: true } },
+        roleGrants: {
+          where: { branchId: null, role: { active: true } },
+          select: {
+            role: {
+              select: {
+                permissions: { select: { permissionKey: true } },
+              },
+            },
+          },
+        },
+      },
+      orderBy: [{ school: { name: "asc" } }, { schoolId: "asc" }],
+    });
+    return memberships.map(mapSchoolAccess);
   }
 
   async isPlatformAdmin(userId: string): Promise<boolean> {

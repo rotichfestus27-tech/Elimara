@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
 import request from "supertest";
+import { describe, expect, it, vi } from "vitest";
 import { createApp } from "./app.js";
 import type { AppConfig } from "./config/env.js";
 import { ApiError } from "./http/errors/api-error.js";
@@ -13,6 +13,12 @@ const config: AppConfig = {
   DIRECT_URL: "postgresql://user:password@localhost:5432/elimara",
   RATE_LIMIT_HMAC_KEY: "replace-with-at-least-32-random-characters",
   PLATFORM_MFA_ENCRYPTION_KEY: "a1".repeat(32),
+  TRUST_PROXY_HOPS: 0,
+  DATABASE_READY_TIMEOUT_MS: 2000,
+  SESSION_COOKIE_NAME: "elimara_session",
+  CSRF_COOKIE_NAME: "elimara_csrf",
+  SESSION_TTL_HOURS: 12,
+  COOKIE_SAME_SITE: "lax",
 };
 
 describe("API foundation", () => {
@@ -42,7 +48,7 @@ describe("API foundation", () => {
   it("reports not ready when the database check fails", async () => {
     const app = createApp(config, {
       checkDatabase: async () => {
-        throw new Error("private database detail");
+        throw new Error("private database detail: postgresql://admin:secret@db:5432/elimara");
       },
     });
 
@@ -54,6 +60,58 @@ describe("API foundation", () => {
       message: "Service is not ready.",
     });
     expect(JSON.stringify(response.body)).not.toContain("private database detail");
+    expect(JSON.stringify(response.body)).not.toContain("secret");
+  });
+
+  it("reports not ready when the database check exceeds the configured timeout", async () => {
+    const timeoutConfig: AppConfig = {
+      ...config,
+      DATABASE_READY_TIMEOUT_MS: 50,
+    };
+    const app = createApp(timeoutConfig, {
+      checkDatabase: () =>
+        new Promise<void>((resolve) => {
+          setTimeout(resolve, 300);
+        }),
+    });
+
+    const response = await request(app).get("/health/ready");
+
+    expect(response.status).toBe(503);
+    expect(response.body.error).toMatchObject({
+      code: "SERVICE_NOT_READY",
+      message: "Database readiness check timed out.",
+    });
+  });
+
+  it("handles late rejection after timeout without unhandled promise rejection", async () => {
+    const timeoutConfig: AppConfig = {
+      ...config,
+      DATABASE_READY_TIMEOUT_MS: 30,
+    };
+    let unhandledTriggered = false;
+    const originalListener = () => {
+      unhandledTriggered = true;
+    };
+    process.on("unhandledRejection", originalListener);
+
+    try {
+      const app = createApp(timeoutConfig, {
+        checkDatabase: () =>
+          new Promise<void>((_, reject) => {
+            setTimeout(() => reject(new Error("late socket failure")), 60);
+          }),
+      });
+
+      const response = await request(app).get("/health/ready");
+      expect(response.status).toBe(503);
+      expect(response.body.error.code).toBe("SERVICE_NOT_READY");
+
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(unhandledTriggered).toBe(false);
+    } finally {
+      process.off("unhandledRejection", originalListener);
+    }
   });
 
   it("returns a consistent error for unknown routes", async () => {

@@ -1,7 +1,7 @@
 import { FileText, ReceiptText } from "lucide-react";
 import {
-  FinanceStatusBadge,
   type FinanceStatus,
+  FinanceStatusBadge,
 } from "@/components/finance/finance-status-badge";
 import {
   Card,

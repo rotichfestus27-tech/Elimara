@@ -20,6 +20,7 @@ export class ApiClientError extends Error {
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/+$/, "");
 const csrfCookieName = import.meta.env.VITE_CSRF_COOKIE_NAME || "elimara_csrf";
+export const SESSION_EXPIRED_EVENT = "elimara:session-expired";
 
 export async function apiRequest<T>(
   path: string,
@@ -62,17 +63,12 @@ export async function apiRequest<T>(
 
   if (response.status === 204) return undefined as T;
 
-  const payload: unknown = await response.json().catch(() => undefined);
   if (!response.ok) {
-    const error = isApiErrorBody(payload) ? payload.error : undefined;
-    throw new ApiClientError(
-      error?.message ?? "The request could not be completed.",
-      response.status,
-      error?.code ?? "REQUEST_FAILED",
-      error?.issues ?? [],
-    );
+    const error = await apiErrorFromResponse(response, "The request could not be completed.");
+    notifySessionExpired(path, response);
+    throw error;
   }
-  return payload as T;
+  return (await response.json()) as T;
 }
 
 export async function downloadReport(path: string, fileName: string): Promise<void> {
@@ -91,14 +87,9 @@ export async function downloadReport(path: string, fileName: string): Promise<vo
   }
 
   if (!response.ok) {
-    const payload: unknown = await response.json().catch(() => undefined);
-    const error = isApiErrorBody(payload) ? payload.error : undefined;
-    throw new ApiClientError(
-      error?.message ?? "The report could not be generated.",
-      response.status,
-      error?.code ?? "REQUEST_FAILED",
-      error?.issues ?? [],
-    );
+    const error = await apiErrorFromResponse(response, "The report could not be generated.");
+    notifySessionExpired(path, response);
+    throw error;
   }
 
   const objectUrl = URL.createObjectURL(await response.blob());
@@ -107,6 +98,31 @@ export async function downloadReport(path: string, fileName: string): Promise<vo
   link.download = fileName;
   link.click();
   URL.revokeObjectURL(objectUrl);
+}
+
+async function apiErrorFromResponse(
+  response: Response,
+  fallbackMessage: string,
+): Promise<ApiClientError> {
+  const payload: unknown = await response.json().catch(() => undefined);
+  const error = isApiErrorBody(payload) ? payload.error : undefined;
+
+  return new ApiClientError(
+    error?.message ?? fallbackMessage,
+    response.status,
+    error?.code ?? "REQUEST_FAILED",
+    error?.issues ?? [],
+  );
+}
+
+function notifySessionExpired(path: string, response: Response) {
+  if (
+    response.status === 401 &&
+    !path.startsWith("/auth/") &&
+    typeof window !== "undefined"
+  ) {
+    window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+  }
 }
 
 function readCookie(name: string): string | undefined {

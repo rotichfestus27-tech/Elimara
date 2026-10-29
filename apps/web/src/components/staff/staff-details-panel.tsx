@@ -1,7 +1,7 @@
 import { ContactRound } from "lucide-react";
 import {
   StaffStatusBadge,
-  type StaffEmploymentStatus,
+  type StaffProfileStatus,
 } from "@/components/staff/staff-status-badge";
 import {
   Card,
@@ -11,15 +11,14 @@ import {
 } from "@/components/ui/card";
 
 export type StaffDetails = {
-  staffId: string;
+  staffNumber: string;
   staffName: string;
-  department: string;
-  position: string;
-  category: "Teaching" | "Non-Teaching";
-  email: string;
-  phone: string;
-  dateHired: string;
-  employmentStatus: StaffEmploymentStatus;
+  department: string | null;
+  positionTitle: string;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  createdAt: string;
+  status: StaffProfileStatus;
 };
 
 type StaffDetailsPanelProps = {
@@ -27,17 +26,16 @@ type StaffDetailsPanelProps = {
 };
 
 const detailLabels: Array<{
-  key: Exclude<keyof StaffDetails, "employmentStatus">;
+  key: Exclude<keyof StaffDetails, "status">;
   label: string;
 }> = [
-  { key: "staffId", label: "Staff ID" },
+  { key: "staffNumber", label: "Staff number" },
   { key: "staffName", label: "Staff name" },
   { key: "department", label: "Department" },
-  { key: "position", label: "Position" },
-  { key: "category", label: "Category" },
-  { key: "email", label: "Email" },
-  { key: "phone", label: "Phone number" },
-  { key: "dateHired", label: "Date hired" },
+  { key: "positionTitle", label: "Position title" },
+  { key: "contactEmail", label: "Contact email" },
+  { key: "contactPhone", label: "Contact phone" },
+  { key: "createdAt", label: "Profile created" },
 ];
 
 export function StaffDetailsPanel({ staff }: StaffDetailsPanelProps) {
@@ -46,7 +44,7 @@ export function StaffDetailsPanel({ staff }: StaffDetailsPanelProps) {
       <CardHeader>
         <CardTitle className="text-base">Staff details</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Staff information will be available when records are connected.
+          Staff profile fields described by the proposed API contract.
         </p>
       </CardHeader>
       <CardContent>
@@ -64,10 +62,10 @@ export function StaffDetailsPanel({ staff }: StaffDetailsPanelProps) {
             ))}
             <div className="space-y-1">
               <dt className="text-xs font-medium text-muted-foreground">
-                Employment status
+                Profile status
               </dt>
               <dd>
-                <StaffStatusBadge status={staff.employmentStatus} />
+                <StaffStatusBadge status={staff.status} />
               </dd>
             </div>
           </dl>

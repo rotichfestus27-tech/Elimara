@@ -1,19 +1,12 @@
-import { Plus, Pencil, Trash2, AlertCircle } from "lucide-react";
-import { useState, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { AlertCircle, Pencil, Plus, Trash2 } from "lucide-react";
+import { type FormEvent, useRef, useState } from "react";
 import { useAuth } from "@/app/auth-provider";
-import { apiRequest, ApiClientError } from "@/lib/api/client";
-import { useSchoolList } from "@/lib/api/school-data";
+import { RequestError, RequestLoading } from "@/components/api/request-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { RequestError, RequestLoading } from "@/components/api/request-state";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { UnauthorizedState } from "@/components/ui/data-states";
 import {
   Dialog,
   DialogContent,
@@ -22,6 +15,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
+import { ApiClientError, apiRequest } from "@/lib/api/client";
+import { useSchoolList } from "@/lib/api/school-data";
 
 export type AcademicRecordStatus = "ACTIVE" | "INACTIVE";
 
@@ -101,9 +97,38 @@ type DeactivateTarget =
   | { type: "subjects"; id: string; name: string }
   | { type: "classSubjects"; id: string; name: string };
 
+function AcademicQueryError({
+  error,
+  isFetching,
+  onRetry,
+}: {
+  error: Error | null;
+  isFetching: boolean;
+  onRetry: () => void;
+}) {
+  return (
+    <div className="space-y-3">
+      <RequestError error={error} />
+      <Button
+        disabled={isFetching}
+        onClick={onRetry}
+        size="sm"
+        type="button"
+        variant="outline"
+      >
+        Retry
+      </Button>
+    </div>
+  );
+}
+
 export function AcademicsPage() {
   const { school } = useAuth();
   const queryClient = useQueryClient();
+  const canReadConfiguration =
+    school?.permissions.includes("academics.configuration.read") ?? false;
+  const canManageConfiguration =
+    school?.permissions.includes("academics.configuration.manage") ?? false;
 
   const [section, setSection] = useState<SectionId>("academic-years");
   const [search, setSearch] = useState("");
@@ -113,14 +138,17 @@ export function AcademicsPage() {
   const [deactivateTarget, setDeactivateTarget] = useState<DeactivateTarget | null>(null);
 
   // Active academic years for queries and selectors
-  const activeYears = useSchoolList<AcademicYear>("/academic-years", {
-    limit: 100,
-    offset: 0,
-    status: "ACTIVE",
-  });
+  const activeYears = useSchoolList<AcademicYear>(
+    "/academic-years",
+    {
+      limit: 100,
+      offset: 0,
+      status: "ACTIVE",
+    },
+    { enabled: canReadConfiguration },
+  );
   const [selectedYearIdState, setSelectedYearIdState] = useState("");
-  const selectedYearId =
-    selectedYearIdState || activeYears.data?.data[0]?.id || "";
+  const selectedYearId = selectedYearIdState || activeYears.data?.data[0]?.id || "";
 
   // Active classes for streams and assignments
   const activeClasses = useSchoolList<AcademicClass>(
@@ -131,18 +159,21 @@ export function AcademicsPage() {
       offset: 0,
       status: "ACTIVE",
     },
-    { enabled: Boolean(selectedYearId) },
+    { enabled: canReadConfiguration && Boolean(selectedYearId) },
   );
   const [selectedClassIdState, setSelectedClassIdState] = useState("");
-  const selectedClassId =
-    selectedClassIdState || activeClasses.data?.data[0]?.id || "";
+  const selectedClassId = selectedClassIdState || activeClasses.data?.data[0]?.id || "";
 
   // Active subjects for subject assignments
-  const activeSubjects = useSchoolList<Subject>("/subjects", {
-    limit: 100,
-    offset: 0,
-    status: "ACTIVE",
-  });
+  const activeSubjects = useSchoolList<Subject>(
+    "/subjects",
+    {
+      limit: 100,
+      offset: 0,
+      status: "ACTIVE",
+    },
+    { enabled: canReadConfiguration },
+  );
 
   // Section queries
   const yearsQuery = useSchoolList<AcademicYear>(
@@ -153,7 +184,7 @@ export function AcademicsPage() {
       status: status === "all" ? undefined : status,
       q: search.trim() || undefined,
     },
-    { enabled: section === "academic-years" },
+    { enabled: canReadConfiguration && section === "academic-years" },
   );
 
   const termsQuery = useSchoolList<Term>(
@@ -165,7 +196,7 @@ export function AcademicsPage() {
       status: status === "all" ? undefined : status,
       q: search.trim() || undefined,
     },
-    { enabled: section === "terms" && Boolean(selectedYearId) },
+    { enabled: canReadConfiguration && section === "terms" && Boolean(selectedYearId) },
   );
 
   const classesQuery = useSchoolList<AcademicClass>(
@@ -177,7 +208,7 @@ export function AcademicsPage() {
       status: status === "all" ? undefined : status,
       q: search.trim() || undefined,
     },
-    { enabled: section === "classes" && Boolean(selectedYearId) },
+    { enabled: canReadConfiguration && section === "classes" && Boolean(selectedYearId) },
   );
 
   const streamsQuery = useSchoolList<ClassStream>(
@@ -189,7 +220,7 @@ export function AcademicsPage() {
       status: status === "all" ? undefined : status,
       q: search.trim() || undefined,
     },
-    { enabled: section === "streams" && Boolean(selectedClassId) },
+    { enabled: canReadConfiguration && section === "streams" && Boolean(selectedClassId) },
   );
 
   const subjectsQuery = useSchoolList<Subject>(
@@ -200,7 +231,7 @@ export function AcademicsPage() {
       status: status === "all" ? undefined : status,
       q: search.trim() || undefined,
     },
-    { enabled: section === "subjects" },
+    { enabled: canReadConfiguration && section === "subjects" },
   );
 
   const classSubjectsQuery = useSchoolList<ClassSubject>(
@@ -212,7 +243,7 @@ export function AcademicsPage() {
       status: status === "all" ? undefined : status,
       q: search.trim() || undefined,
     },
-    { enabled: section === "class-subjects" && Boolean(selectedClassId) },
+    { enabled: canReadConfiguration && section === "class-subjects" && Boolean(selectedClassId) },
   );
 
   function invalidateAcademicQueries() {
@@ -226,6 +257,21 @@ export function AcademicsPage() {
   const selectedYear = activeYears.data?.data.find((y) => y.id === selectedYearId);
   const selectedClass = activeClasses.data?.data.find((c) => c.id === selectedClassId);
 
+  function selectSection(nextSection: SectionId) {
+    setSection(nextSection);
+    setSearch("");
+    setStatus("all");
+  }
+
+  if (!canReadConfiguration) {
+    return (
+      <UnauthorizedState
+        description="Your school access does not include permission to read academic configuration."
+        title="Academic configuration access unavailable"
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
       <section className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
@@ -237,12 +283,12 @@ export function AcademicsPage() {
           </p>
         </div>
         <div>
-          {section === "academic-years" && (
+          {canManageConfiguration && section === "academic-years" && (
             <Button onClick={() => setSheetMode({ type: "create-year" })}>
               <Plus className="mr-2 size-4" /> Add academic year
             </Button>
           )}
-          {section === "terms" && (
+          {canManageConfiguration && section === "terms" && (
             <Button
               disabled={!selectedYearId}
               onClick={() => setSheetMode({ type: "create-term", defaultYearId: selectedYearId })}
@@ -250,7 +296,7 @@ export function AcademicsPage() {
               <Plus className="mr-2 size-4" /> Add term
             </Button>
           )}
-          {section === "classes" && (
+          {canManageConfiguration && section === "classes" && (
             <Button
               disabled={!selectedYearId}
               onClick={() => setSheetMode({ type: "create-class", defaultYearId: selectedYearId })}
@@ -258,23 +304,27 @@ export function AcademicsPage() {
               <Plus className="mr-2 size-4" /> Add class
             </Button>
           )}
-          {section === "streams" && (
+          {canManageConfiguration && section === "streams" && (
             <Button
               disabled={!selectedClassId}
-              onClick={() => setSheetMode({ type: "create-stream", defaultClassId: selectedClassId })}
+              onClick={() =>
+                setSheetMode({ type: "create-stream", defaultClassId: selectedClassId })
+              }
             >
               <Plus className="mr-2 size-4" /> Add stream
             </Button>
           )}
-          {section === "subjects" && (
+          {canManageConfiguration && section === "subjects" && (
             <Button onClick={() => setSheetMode({ type: "create-subject" })}>
               <Plus className="mr-2 size-4" /> Add subject
             </Button>
           )}
-          {section === "class-subjects" && (
+          {canManageConfiguration && section === "class-subjects" && (
             <Button
               disabled={!selectedClassId}
-              onClick={() => setSheetMode({ type: "assign-subject", defaultClassId: selectedClassId })}
+              onClick={() =>
+                setSheetMode({ type: "assign-subject", defaultClassId: selectedClassId })
+              }
             >
               <Plus className="mr-2 size-4" /> Assign subject
             </Button>
@@ -283,22 +333,54 @@ export function AcademicsPage() {
       </section>
 
       {/* Tabs */}
-      <div aria-label="Academic configuration" className="flex gap-1 overflow-x-auto border-b" role="tablist">
+      <div
+        aria-label="Academic configuration"
+        className="flex gap-1 overflow-x-auto border-b"
+        role="tablist"
+      >
         {sections.map((item) => (
           <button
             aria-selected={section === item.id}
+            aria-controls={`academic-panel-${item.id}`}
             className={`min-h-11 shrink-0 border-b-2 px-4 text-sm font-medium transition-colors ${
               section === item.id
                 ? "border-primary text-primary"
                 : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
+            id={`academic-tab-${item.id}`}
             key={item.id}
-            onClick={() => {
-              setSection(item.id);
-              setSearch("");
-              setStatus("all");
+            onClick={() => selectSection(item.id)}
+            onKeyDown={(event) => {
+              const currentIndex = sections.findIndex((tab) => tab.id === item.id);
+              let nextIndex: number;
+
+              switch (event.key) {
+                case "ArrowRight":
+                  nextIndex = (currentIndex + 1) % sections.length;
+                  break;
+                case "ArrowLeft":
+                  nextIndex = (currentIndex - 1 + sections.length) % sections.length;
+                  break;
+                case "Home":
+                  nextIndex = 0;
+                  break;
+                case "End":
+                  nextIndex = sections.length - 1;
+                  break;
+                default:
+                  return;
+              }
+
+              event.preventDefault();
+              selectSection(sections[nextIndex].id);
+              const tabs =
+                event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
+                  '[role="tab"]',
+                );
+              tabs?.[nextIndex]?.focus();
             }}
             role="tab"
+            tabIndex={section === item.id ? 0 : -1}
             type="button"
           >
             {item.label}
@@ -306,8 +388,19 @@ export function AcademicsPage() {
         ))}
       </div>
 
-      <Card className="shadow-none">
+      <Card
+        aria-labelledby={`academic-tab-${section}`}
+        className="shadow-none"
+        id={`academic-panel-${section}`}
+        role="tabpanel"
+        tabIndex={0}
+      >
         <CardContent className="space-y-4 p-4 sm:p-5">
+          {!canManageConfiguration && (
+            <p className="text-sm text-muted-foreground" role="status">
+              Read-only: academic configuration management permission is required to make changes.
+            </p>
+          )}
           {/* Controls bar */}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {/* Contextual Academic Year selector */}
@@ -319,6 +412,11 @@ export function AcademicsPage() {
                 <span className="text-xs font-medium text-muted-foreground">Academic year</span>
                 <select
                   className="h-10 w-full rounded-md border border-input bg-background px-3"
+                  disabled={
+                    activeYears.isPending ||
+                    activeYears.isError ||
+                    activeYears.data?.data.length === 0
+                  }
                   onChange={(e) => {
                     setSelectedYearIdState(e.target.value);
                     setSelectedClassIdState("");
@@ -330,9 +428,13 @@ export function AcademicsPage() {
                       {year.name} ({year.startsOn} to {year.endsOn})
                     </option>
                   ))}
-                  {activeYears.data?.data.length === 0 && (
-                    <option value="">No active academic years</option>
-                  )}
+                  {activeYears.isPending && <option value="">Loading academic years...</option>}
+                  {activeYears.isError && <option value="">Academic years unavailable</option>}
+                  {!activeYears.isPending &&
+                    !activeYears.isError &&
+                    activeYears.data?.data.length === 0 && (
+                      <option value="">No active academic years</option>
+                    )}
                 </select>
               </label>
             )}
@@ -343,7 +445,12 @@ export function AcademicsPage() {
                 <span className="text-xs font-medium text-muted-foreground">Class</span>
                 <select
                   className="h-10 w-full rounded-md border border-input bg-background px-3"
-                  disabled={!selectedYearId}
+                  disabled={
+                    !selectedYearId ||
+                    activeClasses.isPending ||
+                    activeClasses.isError ||
+                    activeClasses.data?.data.length === 0
+                  }
                   onChange={(e) => setSelectedClassIdState(e.target.value)}
                   value={selectedClassId}
                 >
@@ -352,9 +459,13 @@ export function AcademicsPage() {
                       {c.name}
                     </option>
                   ))}
-                  {activeClasses.data?.data.length === 0 && (
-                    <option value="">No classes configured</option>
-                  )}
+                  {activeClasses.isPending && <option value="">Loading classes...</option>}
+                  {activeClasses.isError && <option value="">Classes unavailable</option>}
+                  {!activeClasses.isPending &&
+                    !activeClasses.isError &&
+                    activeClasses.data?.data.length === 0 && (
+                      <option value="">No active classes</option>
+                    )}
                 </select>
               </label>
             )}
@@ -387,6 +498,7 @@ export function AcademicsPage() {
           {/* Section 1: Academic Years */}
           {section === "academic-years" && (
             <AcademicYearsTable
+              canManage={canManageConfiguration}
               onDeactivate={(record) =>
                 setDeactivateTarget({
                   type: "academicYears",
@@ -402,13 +514,22 @@ export function AcademicsPage() {
           {/* Section 2: Terms */}
           {section === "terms" && (
             <>
-              {!selectedYearId && !activeYears.isPending && (
+              {activeYears.isPending && <RequestLoading />}
+              {activeYears.isError && (
+                <AcademicQueryError
+                  error={activeYears.error}
+                  isFetching={activeYears.isFetching}
+                  onRetry={() => void activeYears.refetch()}
+                />
+              )}
+              {!activeYears.isPending && !activeYears.isError && !selectedYearId && (
                 <p className="rounded-md border p-4 text-sm text-muted-foreground">
                   Create and activate an academic year first before managing terms.
                 </p>
               )}
               {selectedYearId && (
                 <TermsTable
+                  canManage={canManageConfiguration}
                   onDeactivate={(record) =>
                     setDeactivateTarget({
                       type: "terms",
@@ -433,13 +554,22 @@ export function AcademicsPage() {
           {/* Section 3: Classes */}
           {section === "classes" && (
             <>
-              {!selectedYearId && !activeYears.isPending && (
+              {activeYears.isPending && <RequestLoading />}
+              {activeYears.isError && (
+                <AcademicQueryError
+                  error={activeYears.error}
+                  isFetching={activeYears.isFetching}
+                  onRetry={() => void activeYears.refetch()}
+                />
+              )}
+              {!activeYears.isPending && !activeYears.isError && !selectedYearId && (
                 <p className="rounded-md border p-4 text-sm text-muted-foreground">
                   Create and activate an academic year first before managing classes.
                 </p>
               )}
               {selectedYearId && (
                 <ClassesTable
+                  canManage={canManageConfiguration}
                   onDeactivate={(record) =>
                     setDeactivateTarget({
                       type: "classes",
@@ -447,9 +577,7 @@ export function AcademicsPage() {
                       name: record.name,
                     })
                   }
-                  onEdit={(record) =>
-                    setSheetMode({ type: "edit-class", record })
-                  }
+                  onEdit={(record) => setSheetMode({ type: "edit-class", record })}
                   query={classesQuery}
                   yearName={selectedYear?.name}
                 />
@@ -460,13 +588,39 @@ export function AcademicsPage() {
           {/* Section 4: Streams */}
           {section === "streams" && (
             <>
-              {!selectedClassId && !activeClasses.isPending && (
+              {activeYears.isPending && <RequestLoading />}
+              {activeYears.isError && (
+                <AcademicQueryError
+                  error={activeYears.error}
+                  isFetching={activeYears.isFetching}
+                  onRetry={() => void activeYears.refetch()}
+                />
+              )}
+              {!activeYears.isPending && !activeYears.isError && !selectedYearId && (
                 <p className="rounded-md border p-4 text-sm text-muted-foreground">
-                  Create and activate a class first before configuring streams.
+                  Create and activate an academic year first before configuring streams.
                 </p>
               )}
+              {Boolean(selectedYearId) && activeClasses.isPending && <RequestLoading />}
+              {Boolean(selectedYearId) && activeClasses.isError && (
+                <AcademicQueryError
+                  error={activeClasses.error}
+                  isFetching={activeClasses.isFetching}
+                  onRetry={() => void activeClasses.refetch()}
+                />
+              )}
+              {Boolean(selectedYearId) &&
+                !activeClasses.isPending &&
+                !activeClasses.isError &&
+                !selectedClassId && (
+                  <p className="rounded-md border p-4 text-sm text-muted-foreground">
+                  No active classes are configured for this academic year. Add or activate a class
+                  before managing streams.
+                  </p>
+                )}
               {selectedClassId && (
                 <StreamsTable
+                  canManage={canManageConfiguration}
                   classNameProp={selectedClass?.name}
                   onDeactivate={(record) =>
                     setDeactivateTarget({
@@ -475,9 +629,7 @@ export function AcademicsPage() {
                       name: record.name,
                     })
                   }
-                  onEdit={(record) =>
-                    setSheetMode({ type: "edit-stream", record })
-                  }
+                  onEdit={(record) => setSheetMode({ type: "edit-stream", record })}
                   query={streamsQuery}
                 />
               )}
@@ -487,6 +639,7 @@ export function AcademicsPage() {
           {/* Section 5: Subjects */}
           {section === "subjects" && (
             <SubjectsTable
+              canManage={canManageConfiguration}
               onDeactivate={(record) =>
                 setDeactivateTarget({
                   type: "subjects",
@@ -494,9 +647,7 @@ export function AcademicsPage() {
                   name: record.name,
                 })
               }
-              onEdit={(record) =>
-                setSheetMode({ type: "edit-subject", record })
-              }
+              onEdit={(record) => setSheetMode({ type: "edit-subject", record })}
               query={subjectsQuery}
             />
           )}
@@ -504,13 +655,39 @@ export function AcademicsPage() {
           {/* Section 6: Class-Subject Assignments */}
           {section === "class-subjects" && (
             <>
-              {!selectedClassId && !activeClasses.isPending && (
+              {activeYears.isPending && <RequestLoading />}
+              {activeYears.isError && (
+                <AcademicQueryError
+                  error={activeYears.error}
+                  isFetching={activeYears.isFetching}
+                  onRetry={() => void activeYears.refetch()}
+                />
+              )}
+              {!activeYears.isPending && !activeYears.isError && !selectedYearId && (
                 <p className="rounded-md border p-4 text-sm text-muted-foreground">
-                  Select an active class to view and manage its assigned subjects.
+                  Create and activate an academic year first before assigning subjects.
                 </p>
               )}
+              {Boolean(selectedYearId) && activeClasses.isPending && <RequestLoading />}
+              {Boolean(selectedYearId) && activeClasses.isError && (
+                <AcademicQueryError
+                  error={activeClasses.error}
+                  isFetching={activeClasses.isFetching}
+                  onRetry={() => void activeClasses.refetch()}
+                />
+              )}
+              {Boolean(selectedYearId) &&
+                !activeClasses.isPending &&
+                !activeClasses.isError &&
+                !selectedClassId && (
+                  <p className="rounded-md border p-4 text-sm text-muted-foreground">
+                  No active classes are configured for this academic year. Add or activate a class
+                  before assigning subjects.
+                  </p>
+                )}
               {selectedClassId && (
                 <ClassSubjectsTable
+                  canManage={canManageConfiguration}
                   classNameProp={selectedClass?.name}
                   onDeactivate={(record, subjectName) =>
                     setDeactivateTarget({
@@ -566,7 +743,9 @@ export function AcademicsPage() {
             <p className="flex items-start gap-2">
               <AlertCircle className="mt-0.5 size-4 shrink-0" />
               <span>
-                Deactivating is terminal and cannot be undone. Records with active dependent items (such as active terms, classes, streams, or timetable lessons) cannot be deactivated until those dependencies are deactivated first.
+                Deactivating is terminal and cannot be undone. Records with active dependent items
+                (such as active terms, classes, streams, or timetable lessons) cannot be deactivated
+                until those dependencies are deactivated first.
               </span>
             </p>
           </div>
@@ -591,16 +770,26 @@ export function AcademicsPage() {
 // ==========================================
 
 function AcademicYearsTable({
+  canManage,
   query,
   onEdit,
   onDeactivate,
 }: {
+  canManage: boolean;
   query: ReturnType<typeof useSchoolList<AcademicYear>>;
   onEdit: (record: AcademicYear) => void;
   onDeactivate: (record: AcademicYear) => void;
 }) {
   if (query.isPending) return <RequestLoading />;
-  if (query.isError) return <RequestError error={query.error} />;
+  if (query.isError) {
+    return (
+      <AcademicQueryError
+        error={query.error}
+        isFetching={query.isFetching}
+        onRetry={() => void query.refetch()}
+      />
+    );
+  }
   const items = query.data.data;
 
   return (
@@ -638,6 +827,7 @@ function AcademicYearsTable({
                     <div className="flex justify-end gap-2">
                       <Button
                         aria-label={`Edit ${item.name}`}
+                        disabled={!canManage}
                         onClick={() => onEdit(item)}
                         size="sm"
                         variant="outline"
@@ -647,6 +837,7 @@ function AcademicYearsTable({
                       </Button>
                       <Button
                         aria-label={`Deactivate ${item.name}`}
+                        disabled={!canManage}
                         onClick={() => onDeactivate(item)}
                         size="sm"
                         variant="outline"
@@ -669,18 +860,28 @@ function AcademicYearsTable({
 }
 
 function TermsTable({
+  canManage,
   query,
   yearName,
   onEdit,
   onDeactivate,
 }: {
+  canManage: boolean;
   query: ReturnType<typeof useSchoolList<Term>>;
   yearName?: string;
   onEdit: (record: Term) => void;
   onDeactivate: (record: Term) => void;
 }) {
   if (query.isPending) return <RequestLoading />;
-  if (query.isError) return <RequestError error={query.error} />;
+  if (query.isError) {
+    return (
+      <AcademicQueryError
+        error={query.error}
+        isFetching={query.isFetching}
+        onRetry={() => void query.refetch()}
+      />
+    );
+  }
   const items = query.data.data;
 
   return (
@@ -720,6 +921,7 @@ function TermsTable({
                     <div className="flex justify-end gap-2">
                       <Button
                         aria-label={`Edit ${item.name}`}
+                        disabled={!canManage}
                         onClick={() => onEdit(item)}
                         size="sm"
                         variant="outline"
@@ -729,6 +931,7 @@ function TermsTable({
                       </Button>
                       <Button
                         aria-label={`Deactivate ${item.name}`}
+                        disabled={!canManage}
                         onClick={() => onDeactivate(item)}
                         size="sm"
                         variant="outline"
@@ -751,18 +954,28 @@ function TermsTable({
 }
 
 function ClassesTable({
+  canManage,
   query,
   yearName,
   onEdit,
   onDeactivate,
 }: {
+  canManage: boolean;
   query: ReturnType<typeof useSchoolList<AcademicClass>>;
   yearName?: string;
   onEdit: (record: AcademicClass) => void;
   onDeactivate: (record: AcademicClass) => void;
 }) {
   if (query.isPending) return <RequestLoading />;
-  if (query.isError) return <RequestError error={query.error} />;
+  if (query.isError) {
+    return (
+      <AcademicQueryError
+        error={query.error}
+        isFetching={query.isFetching}
+        onRetry={() => void query.refetch()}
+      />
+    );
+  }
   const items = query.data.data;
 
   return (
@@ -798,6 +1011,7 @@ function ClassesTable({
                     <div className="flex justify-end gap-2">
                       <Button
                         aria-label={`Edit ${item.name}`}
+                        disabled={!canManage}
                         onClick={() => onEdit(item)}
                         size="sm"
                         variant="outline"
@@ -807,6 +1021,7 @@ function ClassesTable({
                       </Button>
                       <Button
                         aria-label={`Deactivate ${item.name}`}
+                        disabled={!canManage}
                         onClick={() => onDeactivate(item)}
                         size="sm"
                         variant="outline"
@@ -829,18 +1044,28 @@ function ClassesTable({
 }
 
 function StreamsTable({
+  canManage,
   query,
   classNameProp,
   onEdit,
   onDeactivate,
 }: {
+  canManage: boolean;
   query: ReturnType<typeof useSchoolList<ClassStream>>;
   classNameProp?: string;
   onEdit: (record: ClassStream) => void;
   onDeactivate: (record: ClassStream) => void;
 }) {
   if (query.isPending) return <RequestLoading />;
-  if (query.isError) return <RequestError error={query.error} />;
+  if (query.isError) {
+    return (
+      <AcademicQueryError
+        error={query.error}
+        isFetching={query.isFetching}
+        onRetry={() => void query.refetch()}
+      />
+    );
+  }
   const items = query.data.data;
 
   return (
@@ -876,6 +1101,7 @@ function StreamsTable({
                     <div className="flex justify-end gap-2">
                       <Button
                         aria-label={`Edit ${item.name}`}
+                        disabled={!canManage}
                         onClick={() => onEdit(item)}
                         size="sm"
                         variant="outline"
@@ -885,6 +1111,7 @@ function StreamsTable({
                       </Button>
                       <Button
                         aria-label={`Deactivate ${item.name}`}
+                        disabled={!canManage}
                         onClick={() => onDeactivate(item)}
                         size="sm"
                         variant="outline"
@@ -907,16 +1134,26 @@ function StreamsTable({
 }
 
 function SubjectsTable({
+  canManage,
   query,
   onEdit,
   onDeactivate,
 }: {
+  canManage: boolean;
   query: ReturnType<typeof useSchoolList<Subject>>;
   onEdit: (record: Subject) => void;
   onDeactivate: (record: Subject) => void;
 }) {
   if (query.isPending) return <RequestLoading />;
-  if (query.isError) return <RequestError error={query.error} />;
+  if (query.isError) {
+    return (
+      <AcademicQueryError
+        error={query.error}
+        isFetching={query.isFetching}
+        onRetry={() => void query.refetch()}
+      />
+    );
+  }
   const items = query.data.data;
 
   return (
@@ -950,6 +1187,7 @@ function SubjectsTable({
                     <div className="flex justify-end gap-2">
                       <Button
                         aria-label={`Edit ${item.name}`}
+                        disabled={!canManage}
                         onClick={() => onEdit(item)}
                         size="sm"
                         variant="outline"
@@ -959,6 +1197,7 @@ function SubjectsTable({
                       </Button>
                       <Button
                         aria-label={`Deactivate ${item.name}`}
+                        disabled={!canManage}
                         onClick={() => onDeactivate(item)}
                         size="sm"
                         variant="outline"
@@ -981,18 +1220,28 @@ function SubjectsTable({
 }
 
 function ClassSubjectsTable({
+  canManage,
   query,
   subjects,
   classNameProp,
   onDeactivate,
 }: {
+  canManage: boolean;
   query: ReturnType<typeof useSchoolList<ClassSubject>>;
   subjects: Subject[];
   classNameProp?: string;
   onDeactivate: (record: ClassSubject, subjectName: string) => void;
 }) {
   if (query.isPending) return <RequestLoading />;
-  if (query.isError) return <RequestError error={query.error} />;
+  if (query.isError) {
+    return (
+      <AcademicQueryError
+        error={query.error}
+        isFetching={query.isFetching}
+        onRetry={() => void query.refetch()}
+      />
+    );
+  }
   const items = query.data.data;
   const subjectMap = new Map(subjects.map((s) => [s.id, s.name]));
 
@@ -1016,7 +1265,7 @@ function ClassSubjectsTable({
             </tr>
           ) : (
             items.map((item) => {
-              const subjectName = subjectMap.get(item.subjectId) ?? item.subjectId;
+              const subjectName = subjectMap.get(item.subjectId) ?? "Subject name unavailable";
               return (
                 <tr className="border-t" key={item.id}>
                   <td className="px-4 py-3 font-medium">{subjectName}</td>
@@ -1030,6 +1279,7 @@ function ClassSubjectsTable({
                     {item.status === "ACTIVE" ? (
                       <Button
                         aria-label={`Unassign ${subjectName}`}
+                        disabled={!canManage}
                         onClick={() => onDeactivate(item, subjectName)}
                         size="sm"
                         variant="outline"
@@ -1098,17 +1348,22 @@ function AcademicForm({
   const [subjectId, setSubjectId] = useState(() => activeSubjects[0]?.id || "");
 
   const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
+  const [invalidField, setInvalidField] = useState<string | null>(null);
 
   const selectedYear = activeYears.find((y) => y.id === academicYearId);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    if (submittingRef.current) return;
     setError(null);
+    setInvalidField(null);
 
     // Validation
     if (mode.type !== "assign-subject" && !name.trim()) {
       setError("Name is required.");
+      setInvalidField("name");
       return;
     }
 
@@ -1119,26 +1374,30 @@ function AcademicForm({
       mode.type === "edit-term"
     ) {
       if (!startsOn || !endsOn) {
-        setError("Both start and end dates are required.");
+        const missingDateField = startsOn ? "endsOn" : "startsOn";
+        setError(startsOn ? "End date is required." : "Start date is required.");
+        setInvalidField(missingDateField);
         return;
       }
       if (startsOn > endsOn) {
         setError("Start date must be on or before end date.");
+        setInvalidField("startsOn");
         return;
       }
     }
 
     if (mode.type === "create-term" || mode.type === "edit-term") {
-      const year =
-        mode.type === "edit-term" ? mode.year : selectedYear;
+      const year = mode.type === "edit-term" ? mode.year : selectedYear;
       if (year && (startsOn < year.startsOn || endsOn > year.endsOn)) {
         setError(
           `Term dates must be within the academic year dates (${year.startsOn} to ${year.endsOn}).`,
         );
+        setInvalidField(startsOn < year.startsOn ? "startsOn" : "endsOn");
         return;
       }
     }
 
+    submittingRef.current = true;
     setSubmitting(true);
     try {
       if (mode.type === "create-year") {
@@ -1215,6 +1474,7 @@ function AcademicForm({
 
       onSuccess();
     } catch (err) {
+      setInvalidField(null);
       if (err instanceof ApiClientError) {
         setError(err.message);
       } else if (err instanceof Error) {
@@ -1223,6 +1483,7 @@ function AcademicForm({
         setError("Operation failed. Check your connection and try again.");
       }
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   }
@@ -1271,7 +1532,11 @@ function AcademicForm({
       </div>
 
       {error && (
-        <p className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive" role="alert">
+        <p
+          id="academic-form-error"
+          className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
+          role="alert"
+        >
           {error}
         </p>
       )}
@@ -1374,6 +1639,8 @@ function AcademicForm({
         <label className="block space-y-1.5 text-sm">
           <span className="font-medium">Name</span>
           <input
+            aria-describedby={invalidField === "name" ? "academic-form-error" : undefined}
+            aria-invalid={invalidField === "name"}
             className="h-10 w-full rounded-md border border-input bg-background px-3"
             maxLength={mode.type.includes("subject") ? 120 : 100}
             onChange={(e) => setName(e.target.value)}
@@ -1403,6 +1670,8 @@ function AcademicForm({
           <label className="block space-y-1.5 text-sm">
             <span className="font-medium">Starts on</span>
             <input
+              aria-describedby={invalidField === "startsOn" ? "academic-form-error" : undefined}
+              aria-invalid={invalidField === "startsOn"}
               className="h-10 w-full rounded-md border border-input bg-background px-3"
               onChange={(e) => setStartsOn(e.target.value)}
               required
@@ -1413,6 +1682,8 @@ function AcademicForm({
           <label className="block space-y-1.5 text-sm">
             <span className="font-medium">Ends on</span>
             <input
+              aria-describedby={invalidField === "endsOn" ? "academic-form-error" : undefined}
+              aria-invalid={invalidField === "endsOn"}
               className="h-10 w-full rounded-md border border-input bg-background px-3"
               onChange={(e) => setEndsOn(e.target.value)}
               required
@@ -1505,7 +1776,10 @@ function DeactivateAction({
   return (
     <div className="space-y-4">
       {error && (
-        <p className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive" role="alert">
+        <p
+          className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
+          role="alert"
+        >
           {error}
         </p>
       )}
@@ -1513,7 +1787,13 @@ function DeactivateAction({
         <Button disabled={submitting} onClick={onCancel} type="button" variant="outline">
           Cancel
         </Button>
-        <Button disabled={submitting} onClick={handleDeactivate} type="button" variant="outline" className="border-destructive text-destructive hover:bg-destructive/10">
+        <Button
+          disabled={submitting}
+          onClick={handleDeactivate}
+          type="button"
+          variant="outline"
+          className="border-destructive text-destructive hover:bg-destructive/10"
+        >
           {submitting ? "Deactivating..." : "Deactivate"}
         </Button>
       </DialogFooter>

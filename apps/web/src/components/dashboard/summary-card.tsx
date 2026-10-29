@@ -1,10 +1,13 @@
 import type { LucideIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 export type SummaryCardItem = {
   title: string;
   description: string;
   icon: LucideIcon;
+  value?: string | number;
+  subtext?: string;
 };
 
 type SummaryCardProps = {
@@ -13,6 +16,7 @@ type SummaryCardProps = {
 
 export function SummaryCard({ item }: SummaryCardProps) {
   const Icon = item.icon;
+  const hasValue = item.value !== undefined;
 
   return (
     <Card className="shadow-none transition-colors hover:border-primary/30">
@@ -28,11 +32,23 @@ export function SummaryCard({ item }: SummaryCardProps) {
         </span>
       </CardHeader>
       <CardContent>
-        <p className="text-2xl font-semibold tracking-tight text-muted-foreground">
-          <span aria-label="No data available">—</span>
+        <p
+          className={cn(
+            "text-2xl font-semibold tracking-tight",
+            hasValue ? "text-foreground" : "text-muted-foreground",
+          )}
+        >
+          {hasValue ? (
+            item.value
+          ) : (
+            <>
+              <span aria-hidden="true">—</span>
+              <span className="sr-only">No data available</span>
+            </>
+          )}
         </p>
         <p className="mt-1 text-xs text-muted-foreground">
-          Awaiting data connection
+          {item.subtext || (hasValue ? "Updated live from database" : "Awaiting data connection")}
         </p>
       </CardContent>
     </Card>

@@ -1,14 +1,16 @@
 import { Activity, Clock3 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 
 export function ActivityPanel() {
   return (
     <Card className="shadow-none">
       <CardHeader className="flex-row items-start justify-between gap-4">
         <div>
-          <CardTitle className="text-base">Recent activity</CardTitle>
+          <h3 className="text-base font-semibold leading-none tracking-tight">
+            Activity and alerts
+          </h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            A summary of what is happening across your school.
+            No approved school-wide activity or alert feed is connected.
           </p>
         </div>
         <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
@@ -20,10 +22,10 @@ export function ActivityPanel() {
           <span className="mb-3 flex size-10 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm">
             <Activity aria-hidden="true" className="size-[18px]" />
           </span>
-          <h4 className="text-sm font-medium">Nothing to show yet</h4>
+          <h4 className="text-sm font-medium">Feed unavailable</h4>
           <p className="mt-1.5 max-w-sm text-xs leading-5 text-muted-foreground">
-            Recent activity will appear here when school data is connected.
-            This preview does not contain sample activity.
+            No activity events or alerts are shown until an approved source is
+            available. No sample data is being shown.
           </p>
         </div>
       </CardContent>

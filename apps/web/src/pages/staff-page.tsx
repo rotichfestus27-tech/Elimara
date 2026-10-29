@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   Briefcase,
@@ -9,12 +9,13 @@ import {
   Search,
   Users,
 } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useAuth } from "@/app/auth-provider";
 import { RequestError, RequestLoading } from "@/components/api/request-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { UnauthorizedState } from "@/components/ui/data-states";
 import {
   Dialog,
   DialogContent,
@@ -101,6 +102,12 @@ type AcademicClass = {
   status: "ACTIVE" | "INACTIVE";
 };
 
+type StaffAcademicYear = {
+  id: string;
+  name: string;
+  status: "ACTIVE" | "INACTIVE";
+};
+
 type ClassStream = {
   id: string;
   name: string;
@@ -141,17 +148,25 @@ function StaffStatusBadge({ status }: { status: StaffStatus }) {
 // -----------------------------------------------------------------------------
 
 export function StaffPage() {
+  const { school } = useAuth();
+  const canReadStaff = Boolean(school?.permissions.includes("staff.profile.read"));
+  const canManageStaff = Boolean(school?.permissions.includes("staff.profile.manage"));
+  const defaultPageSize = 25;
   const [activeTab, setActiveTab] = useState<"staff" | "departments">("staff");
 
   // Staff search & filters
   const [staffSearch, setStaffSearch] = useState("");
   const [staffStatusFilter, setStaffStatusFilter] = useState("all");
   const [departmentFilter, setDepartmentFilter] = useState("all");
+  const [staffOffset, setStaffOffset] = useState(0);
+  const [staffPageSize, setStaffPageSize] = useState(defaultPageSize);
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
 
   // Department search & filters
   const [deptSearch, setDeptSearch] = useState("");
   const [deptStatusFilter, setDeptStatusFilter] = useState("all");
+  const [departmentOffset, setDepartmentOffset] = useState(0);
+  const [departmentPageSize, setDepartmentPageSize] = useState(defaultPageSize);
   const [editingDepartment, setEditingDepartment] = useState<StaffDepartmentRecord | null>(null);
   const [deactivatingDepartment, setDeactivatingDepartment] = useState<StaffDepartmentRecord | null>(null);
 
@@ -161,24 +176,37 @@ export function StaffPage() {
 
   // Queries
   const staffQuery = useSchoolList<StaffMember>("/staff", {
-    limit: 50,
-    offset: 0,
+    limit: staffPageSize,
+    offset: staffOffset,
     q: staffSearch.trim() || undefined,
     status: staffStatusFilter === "all" ? undefined : staffStatusFilter,
     departmentId: departmentFilter === "all" ? undefined : departmentFilter,
     sortBy: "familyName",
     sortOrder: "asc",
-  });
+  }, { enabled: canReadStaff });
 
   const departmentsQuery = useSchoolList<StaffDepartmentRecord>("/departments", {
-    limit: 100,
-    offset: 0,
+    limit: departmentPageSize,
+    offset: departmentOffset,
     q: deptSearch.trim() || undefined,
     status: deptStatusFilter === "all" ? undefined : deptStatusFilter,
     sortOrder: "asc",
-  });
+  }, { enabled: canReadStaff });
 
   const selectedStaff = staffQuery.data?.data.find((s) => s.id === selectedStaffId);
+
+  if (!canReadStaff) {
+    return (
+      <Card className="shadow-none">
+        <CardContent className="p-6">
+          <UnauthorizedState
+            description="Your school access does not include permission to view staff profiles and departments."
+            title="Staff access denied"
+          />
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -195,17 +223,17 @@ export function StaffPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          {activeTab === "staff" ? (
+          {activeTab === "staff" && canManageStaff ? (
             <Button className="gap-2" onClick={() => setIsCreateStaffOpen(true)}>
               <Plus className="size-4" />
               New Staff Profile
             </Button>
-          ) : (
+          ) : activeTab === "departments" && canManageStaff ? (
             <Button className="gap-2" onClick={() => setIsCreateDeptOpen(true)}>
               <Plus className="size-4" />
               New Department
             </Button>
-          )}
+          ) : null}
         </div>
       </section>
 
@@ -213,6 +241,7 @@ export function StaffPage() {
       <div className="border-b">
         <nav className="flex space-x-8" aria-label="Tabs">
           <button
+            aria-pressed={activeTab === "staff"}
             className={`border-b-2 py-4 px-1 text-sm font-medium transition-colors flex items-center gap-2 ${
               activeTab === "staff"
                 ? "border-primary text-primary"
@@ -223,14 +252,17 @@ export function StaffPage() {
           >
             <Users className="size-4" />
             Staff & Teachers Directory
-            {!staffQuery.isPending && (
+            {staffQuery.isError ? (
+              <span className="ml-1 rounded-full bg-muted px-2 py-0.5 text-xs">Unavailable</span>
+            ) : staffQuery.data ? (
               <span className="ml-1 rounded-full bg-muted px-2 py-0.5 text-xs">
-                {staffQuery.data?.meta.total ?? 0}
+                {staffQuery.data.meta.total}
               </span>
-            )}
+            ) : null}
           </button>
 
           <button
+            aria-pressed={activeTab === "departments"}
             className={`border-b-2 py-4 px-1 text-sm font-medium transition-colors flex items-center gap-2 ${
               activeTab === "departments"
                 ? "border-primary text-primary"
@@ -241,11 +273,13 @@ export function StaffPage() {
           >
             <Building2 className="size-4" />
             Departments
-            {!departmentsQuery.isPending && (
+            {departmentsQuery.isError ? (
+              <span className="ml-1 rounded-full bg-muted px-2 py-0.5 text-xs">Unavailable</span>
+            ) : departmentsQuery.data ? (
               <span className="ml-1 rounded-full bg-muted px-2 py-0.5 text-xs">
-                {departmentsQuery.data?.meta.total ?? 0}
+                {departmentsQuery.data.meta.total}
               </span>
-            )}
+            ) : null}
           </button>
         </nav>
       </div>
@@ -264,7 +298,11 @@ export function StaffPage() {
                   />
                   <input
                     className="h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
-                    onChange={(event) => setStaffSearch(event.target.value)}
+                    onChange={(event) => {
+                      setStaffSearch(event.target.value);
+                      setStaffOffset(0);
+                      setStaffPageSize(defaultPageSize);
+                    }}
                     placeholder="Name or staff number"
                     type="search"
                     value={staffSearch}
@@ -275,7 +313,11 @@ export function StaffPage() {
                   <span className="text-xs font-medium text-muted-foreground">Department</span>
                   <select
                     className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    onChange={(e) => setDepartmentFilter(e.target.value)}
+                    onChange={(e) => {
+                      setDepartmentFilter(e.target.value);
+                      setStaffOffset(0);
+                      setStaffPageSize(defaultPageSize);
+                    }}
                     value={departmentFilter}
                   >
                     <option value="all">All departments</option>
@@ -293,7 +335,11 @@ export function StaffPage() {
                   <span className="text-xs font-medium text-muted-foreground">Status</span>
                   <select
                     className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    onChange={(event) => setStaffStatusFilter(event.target.value)}
+                    onChange={(event) => {
+                      setStaffStatusFilter(event.target.value);
+                      setStaffOffset(0);
+                      setStaffPageSize(defaultPageSize);
+                    }}
                     value={staffStatusFilter}
                   >
                     <option value="all">All statuses</option>
@@ -322,7 +368,22 @@ export function StaffPage() {
                       {staffQuery.isPending ? (
                         <tr><td colSpan={7}><RequestLoading /></td></tr>
                       ) : staffQuery.isError ? (
-                        <tr><td colSpan={7}><RequestError error={staffQuery.error} /></td></tr>
+                        <tr>
+                          <td colSpan={7}>
+                            <div className="space-y-3 p-4">
+                              <RequestError error={staffQuery.error} />
+                              <Button
+                                disabled={staffQuery.isFetching}
+                                onClick={() => void staffQuery.refetch()}
+                                size="sm"
+                                type="button"
+                                variant="outline"
+                              >
+                                Retry loading staff
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
                       ) : staffQuery.data.data.length === 0 ? (
                         <tr>
                           <td className="px-4 py-12 text-center text-sm text-muted-foreground" colSpan={7}>
@@ -337,9 +398,8 @@ export function StaffPage() {
 
                           return (
                             <tr
-                              className="cursor-pointer border-t transition-colors hover:bg-muted/40"
+                              className="border-t"
                               key={member.id}
-                              onClick={() => setSelectedStaffId(member.id)}
                             >
                               <td className="px-4 py-3 font-mono font-medium text-foreground">
                                 {member.staffNumber}
@@ -357,14 +417,12 @@ export function StaffPage() {
                               </td>
                               <td className="px-4 py-3 text-right">
                                 <Button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setSelectedStaffId(member.id);
-                                  }}
+                                  aria-label={`View details for ${fullName}`}
+                                  onClick={() => setSelectedStaffId(member.id)}
                                   size="sm"
                                   variant="ghost"
                                 >
-                                  Manage
+                                  View details
                                 </Button>
                               </td>
                             </tr>
@@ -377,9 +435,43 @@ export function StaffPage() {
               </div>
 
               {!staffQuery.isError && !staffQuery.isPending && (
-                <p className="text-xs text-muted-foreground">
-                  Showing {staffQuery.data.data.length} of {staffQuery.data.meta.total} staff profiles.
-                </p>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p aria-live="polite" className="text-xs text-muted-foreground">
+                    Showing{" "}
+                    {staffQuery.data.meta.total === 0 ? 0 : staffQuery.data.meta.offset + 1}–
+                    {staffQuery.data.meta.offset + staffQuery.data.data.length} of{" "}
+                    {staffQuery.data.meta.total} staff profiles.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      disabled={staffQuery.data.meta.offset === 0}
+                      onClick={() => {
+                        setStaffPageSize(staffQuery.data.meta.limit);
+                        setStaffOffset(
+                          Math.max(0, staffQuery.data.meta.offset - staffQuery.data.meta.limit),
+                        );
+                      }}
+                      size="sm"
+                      variant="outline"
+                    >
+                      Previous
+                    </Button>
+                    <Button
+                      disabled={
+                        staffQuery.data.meta.offset + staffQuery.data.data.length >=
+                        staffQuery.data.meta.total
+                      }
+                      onClick={() => {
+                        setStaffPageSize(staffQuery.data.meta.limit);
+                        setStaffOffset(staffQuery.data.meta.offset + staffQuery.data.meta.limit);
+                      }}
+                      size="sm"
+                      variant="outline"
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -400,7 +492,11 @@ export function StaffPage() {
                   />
                   <input
                     className="h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
-                    onChange={(e) => setDeptSearch(e.target.value)}
+                    onChange={(e) => {
+                      setDeptSearch(e.target.value);
+                      setDepartmentOffset(0);
+                      setDepartmentPageSize(defaultPageSize);
+                    }}
                     placeholder="Search departments"
                     type="search"
                     value={deptSearch}
@@ -411,7 +507,11 @@ export function StaffPage() {
                   <span className="text-xs font-medium text-muted-foreground">Status</span>
                   <select
                     className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    onChange={(e) => setDeptStatusFilter(e.target.value)}
+                    onChange={(e) => {
+                      setDeptStatusFilter(e.target.value);
+                      setDepartmentOffset(0);
+                      setDepartmentPageSize(defaultPageSize);
+                    }}
                     value={deptStatusFilter}
                   >
                     <option value="all">All statuses</option>
@@ -457,14 +557,16 @@ export function StaffPage() {
                               </Badge>
                             </td>
                             <td className="px-4 py-3 text-right space-x-2">
-                              <Button
-                                onClick={() => setEditingDepartment(dept)}
-                                size="sm"
-                                variant="ghost"
-                              >
-                                Edit
-                              </Button>
-                              {dept.status === "ACTIVE" && (
+                              {canManageStaff && (
+                                <Button
+                                  onClick={() => setEditingDepartment(dept)}
+                                  size="sm"
+                                  variant="ghost"
+                                >
+                                  Edit
+                                </Button>
+                              )}
+                              {canManageStaff && dept.status === "ACTIVE" && (
                                 <Button
                                   className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
                                   onClick={() => setDeactivatingDepartment(dept)}
@@ -482,6 +584,50 @@ export function StaffPage() {
                   </table>
                 </div>
               </div>
+              {!departmentsQuery.isError && !departmentsQuery.isPending && (
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p aria-live="polite" className="text-xs text-muted-foreground">
+                    Showing{" "}
+                    {departmentsQuery.data.meta.total === 0 ? 0 : departmentsQuery.data.meta.offset + 1}–
+                    {departmentsQuery.data.meta.offset + departmentsQuery.data.data.length} of{" "}
+                    {departmentsQuery.data.meta.total} departments.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      disabled={departmentsQuery.data.meta.offset === 0}
+                      onClick={() => {
+                        setDepartmentPageSize(departmentsQuery.data.meta.limit);
+                        setDepartmentOffset(
+                          Math.max(
+                            0,
+                            departmentsQuery.data.meta.offset - departmentsQuery.data.meta.limit,
+                          ),
+                        );
+                      }}
+                      size="sm"
+                      variant="outline"
+                    >
+                      Previous
+                    </Button>
+                    <Button
+                      disabled={
+                        departmentsQuery.data.meta.offset + departmentsQuery.data.data.length >=
+                        departmentsQuery.data.meta.total
+                      }
+                      onClick={() => {
+                        setDepartmentPageSize(departmentsQuery.data.meta.limit);
+                        setDepartmentOffset(
+                          departmentsQuery.data.meta.offset + departmentsQuery.data.meta.limit,
+                        );
+                      }}
+                      size="sm"
+                      variant="outline"
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </section>
@@ -551,6 +697,7 @@ function CreateStaffSheet({
 }) {
   const { school } = useAuth();
   const queryClient = useQueryClient();
+  const formId = useId();
 
   const [staffNumber, setStaffNumber] = useState("");
   const [givenName, setGivenName] = useState("");
@@ -650,18 +797,25 @@ function CreateStaffSheet({
 
           <div className="flex-1 space-y-4 py-6">
             {formError && (
-              <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive flex items-center gap-2">
+              <div
+                className="rounded-md bg-destructive/10 p-3 text-sm text-destructive flex items-center gap-2"
+                role="alert"
+              >
                 <AlertCircle className="size-4 shrink-0" />
                 <span>{formError}</span>
               </div>
             )}
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor={`${formId}-staff-number`}
+              >
                 Staff Number / Employee ID <span className="text-destructive">*</span>
               </label>
               <input
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm font-mono focus-visible:ring-2 focus-visible:ring-ring"
+                id={`${formId}-staff-number`}
                 onChange={(e) => setStaffNumber(e.target.value)}
                 placeholder="e.g. EMP-001 or T-2026-01"
                 required
@@ -669,37 +823,54 @@ function CreateStaffSheet({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">
-                  Given name <span className="text-destructive">*</span>
-                </label>
-                <input
-                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
-                  onChange={(e) => setGivenName(e.target.value)}
-                  placeholder="e.g. David"
-                  required
-                  value={givenName}
-                />
-              </div>
+            <fieldset className="space-y-1.5">
+              <legend className="sr-only">Staff name</legend>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label
+                    className="text-xs font-medium text-muted-foreground"
+                    htmlFor={`${formId}-given-name`}
+                  >
+                    Given name <span className="text-destructive">*</span>
+                  </label>
+                  <input
+                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                    id={`${formId}-given-name`}
+                    onChange={(e) => setGivenName(e.target.value)}
+                    placeholder="e.g. David"
+                    required
+                    value={givenName}
+                  />
+                </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Middle name</label>
-                <input
-                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
-                  onChange={(e) => setMiddleName(e.target.value)}
-                  placeholder="Optional"
-                  value={middleName}
-                />
+                <div className="space-y-1.5">
+                  <label
+                    className="text-xs font-medium text-muted-foreground"
+                    htmlFor={`${formId}-middle-name`}
+                  >
+                    Middle name
+                  </label>
+                  <input
+                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                    id={`${formId}-middle-name`}
+                    onChange={(e) => setMiddleName(e.target.value)}
+                    placeholder="Optional"
+                    value={middleName}
+                  />
+                </div>
               </div>
-            </div>
+            </fieldset>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor={`${formId}-family-name`}
+              >
                 Family name <span className="text-destructive">*</span>
               </label>
               <input
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                id={`${formId}-family-name`}
                 onChange={(e) => setFamilyName(e.target.value)}
                 placeholder="e.g. Kariuki"
                 required
@@ -708,11 +879,15 @@ function CreateStaffSheet({
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor={`${formId}-position-title`}
+              >
                 Position Title <span className="text-destructive">*</span>
               </label>
               <input
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                id={`${formId}-position-title`}
                 onChange={(e) => setPositionTitle(e.target.value)}
                 placeholder="e.g. Mathematics Teacher"
                 required
@@ -721,9 +896,15 @@ function CreateStaffSheet({
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Department</label>
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor={`${formId}-department`}
+              >
+                Department
+              </label>
               <select
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                id={`${formId}-department`}
                 onChange={(e) => setDepartmentId(e.target.value)}
                 value={departmentId}
               >
@@ -740,9 +921,15 @@ function CreateStaffSheet({
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Phone number</label>
+                <label
+                  className="text-xs font-medium text-muted-foreground"
+                  htmlFor={`${formId}-contact-phone`}
+                >
+                  Phone number
+                </label>
                 <input
                   className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                  id={`${formId}-contact-phone`}
                   onChange={(e) => setContactPhone(e.target.value)}
                   placeholder="+254700000000"
                   value={contactPhone}
@@ -750,9 +937,15 @@ function CreateStaffSheet({
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Contact email</label>
+                <label
+                  className="text-xs font-medium text-muted-foreground"
+                  htmlFor={`${formId}-contact-email`}
+                >
+                  Contact email
+                </label>
                 <input
                   className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                  id={`${formId}-contact-email`}
                   onChange={(e) => setContactEmail(e.target.value)}
                   placeholder="staff@school.org"
                   type="email"
@@ -791,6 +984,12 @@ function StaffDetailSheet({
 }) {
   const { school } = useAuth();
   const queryClient = useQueryClient();
+  const permissions = school?.permissions ?? [];
+  const canManageProfile = permissions.includes("staff.profile.manage");
+  const canReadAssignments = permissions.includes("staff.assignment.read");
+  const canManageAssignments = permissions.includes("staff.assignment.manage");
+  const canReadEmployment = permissions.includes("staff.employment.read");
+  const canManageEmployment = permissions.includes("staff.employment.manage");
 
   // Modals inside details
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
@@ -806,24 +1005,77 @@ function StaffDetailSheet({
   const assignmentsQuery = useSchoolData<{ data: StaffAssignmentRecord[] }>(
     `/staff/${staff.id}/assignments`,
     { limit: 50 },
-    { enabled: open },
+    { enabled: open && canReadAssignments },
   );
 
   const employmentsQuery = useSchoolData<{ data: StaffEmploymentRecord[] }>(
     `/staff/${staff.id}/employments`,
     { limit: 50 },
-    { enabled: open },
+    { enabled: open && canReadEmployment },
   );
 
-  // Auxiliary queries for readable class and subject names
-  const classesQuery = useSchoolList<AcademicClass>("/configuration/classes", { limit: 100 }, { enabled: open });
-  const streamsQuery = useSchoolList<ClassStream>("/configuration/streams", { limit: 100 }, { enabled: open });
-  const subjectsQuery = useSchoolList<SubjectRecord>("/configuration/subjects", { limit: 100 }, { enabled: open });
-  const classSubjectsQuery = useSchoolList<ClassSubjectRecord>(
-    "/configuration/class-subjects",
-    { limit: 100 },
-    { enabled: open },
+  const assignmentLookupPaths = Array.from(
+    new Set(
+      (assignmentsQuery.data?.data ?? []).flatMap((assignment) =>
+        assignment.kind === "CLASS"
+          ? [
+              `/classes/${assignment.classId}`,
+              ...(assignment.streamId ? [`/streams/${assignment.streamId}`] : []),
+            ]
+          : [`/class-subjects/${assignment.classSubjectAssignmentId}`],
+      ),
+    ),
   );
+  const assignmentLookups = useQueries({
+    queries: assignmentLookupPaths.map((path) => ({
+      queryKey: ["school-data", school?.id, path, ""],
+      queryFn: ({ signal }: { signal: AbortSignal }) => {
+        if (!school?.id) throw new Error("No school selected.");
+        return apiRequest<AcademicClass | ClassStream | ClassSubjectRecord>(
+          `/schools/${encodeURIComponent(school.id)}${path}`,
+          { signal },
+        );
+      },
+      enabled: open && Boolean(school?.id),
+    })),
+  });
+  const linkedClassSubjectRecords = assignmentLookups.flatMap((query) => {
+    const record = query.data;
+    return record &&
+      typeof record === "object" &&
+      "classId" in record &&
+      "subjectId" in record &&
+      typeof record.classId === "string" &&
+      typeof record.subjectId === "string"
+      ? [record]
+      : [];
+  });
+  const referenceLookupPaths = Array.from(
+    new Set([
+      ...(assignmentsQuery.data?.data ?? [])
+        .filter((assignment): assignment is Extract<StaffAssignmentRecord, { kind: "CLASS" }> =>
+          assignment.kind === "CLASS",
+        )
+        .map((assignment) => `/classes/${assignment.classId}`),
+      ...linkedClassSubjectRecords.flatMap((record) => [
+        `/classes/${record.classId}`,
+        `/subjects/${record.subjectId}`,
+      ]),
+    ]),
+  );
+  const referenceLookups = useQueries({
+    queries: referenceLookupPaths.map((path) => ({
+      queryKey: ["school-data", school?.id, path, ""],
+      queryFn: ({ signal }: { signal: AbortSignal }) => {
+        if (!school?.id) throw new Error("No school selected.");
+        return apiRequest<AcademicClass | SubjectRecord>(
+          `/schools/${encodeURIComponent(school.id)}${path}`,
+          { signal },
+        );
+      },
+      enabled: open && Boolean(school?.id),
+    })),
+  });
 
   // End Class Assignment Mutation
   const endClassAssignmentMutation = useMutation({
@@ -868,18 +1120,30 @@ function StaffDetailSheet({
   const fullName = [staff.givenName, staff.middleName, staff.familyName].filter(Boolean).join(" ");
 
   // Helper mappings
+  const lookupByPath = <T,>(paths: string[], results: Array<{ data: T | undefined }>, path: string) =>
+    results[paths.indexOf(path)]?.data;
   const getClassName = (classId: string) => {
-    return classesQuery.data?.data.find((c) => c.id === classId)?.name ?? classId.slice(0, 8);
+    const record = lookupByPath(referenceLookupPaths, referenceLookups, `/classes/${classId}`);
+    return record && "name" in record ? record.name : classId.slice(0, 8);
   };
   const getStreamName = (streamId: string | null) => {
     if (!streamId) return null;
-    return streamsQuery.data?.data.find((s) => s.id === streamId)?.name ?? streamId.slice(0, 8);
+    const record = lookupByPath(assignmentLookupPaths, assignmentLookups, `/streams/${streamId}`);
+    return record && "name" in record ? record.name : streamId.slice(0, 8);
   };
   const getClassSubjectLabel = (classSubjectId: string) => {
-    const link = classSubjectsQuery.data?.data.find((cs) => cs.id === classSubjectId);
-    if (!link) return `Assignment #${classSubjectId.slice(0, 8)}`;
+    const link = lookupByPath(
+      assignmentLookupPaths,
+      assignmentLookups,
+      `/class-subjects/${classSubjectId}`,
+    );
+    if (!link || !("classId" in link) || !("subjectId" in link)) {
+      return `Assignment #${classSubjectId.slice(0, 8)}`;
+    }
     const className = getClassName(link.classId);
-    const subjectName = subjectsQuery.data?.data.find((s) => s.id === link.subjectId)?.name ?? "Subject";
+    const subjectPath = `/subjects/${link.subjectId}`;
+    const subject = lookupByPath(referenceLookupPaths, referenceLookups, subjectPath);
+    const subjectName = subject && "name" in subject ? subject.name : "Subject";
     return `${className} • ${subjectName}`;
   };
 
@@ -902,23 +1166,27 @@ function StaffDetailSheet({
         <div className="space-y-6 py-6">
           {/* Quick Actions */}
           <div className="flex flex-wrap gap-2">
-            <Button
-              className="gap-1.5"
-              onClick={() => setIsEditProfileOpen(true)}
-              size="sm"
-              variant="outline"
-            >
-              <Edit2 className="size-3.5" />
-              Edit Profile
-            </Button>
-            <Button
-              className="gap-1.5 text-amber-700 hover:text-amber-800"
-              onClick={() => setIsStatusDialogOpen(true)}
-              size="sm"
-              variant="outline"
-            >
-              {staff.status === "ACTIVE" ? "Deactivate Profile" : "Reactivate Profile"}
-            </Button>
+            {canManageProfile && (
+              <>
+                <Button
+                  className="gap-1.5"
+                  onClick={() => setIsEditProfileOpen(true)}
+                  size="sm"
+                  variant="outline"
+                >
+                  <Edit2 className="size-3.5" />
+                  Edit Profile
+                </Button>
+                <Button
+                  className="gap-1.5 text-amber-700 hover:text-amber-800"
+                  onClick={() => setIsStatusDialogOpen(true)}
+                  size="sm"
+                  variant="outline"
+                >
+                  {staff.status === "ACTIVE" ? "Deactivate Profile" : "Reactivate Profile"}
+                </Button>
+              </>
+            )}
           </div>
 
           {/* Personal & Contact Overview */}
@@ -926,42 +1194,43 @@ function StaffDetailSheet({
             <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Profile Details
             </h4>
-            <div className="rounded-lg border bg-card p-3 space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Staff Number:</span>
-                <span className="font-mono font-medium">{staff.staffNumber}</span>
+            <dl className="grid gap-x-4 gap-y-3 rounded-lg border bg-card p-3 text-sm sm:grid-cols-2">
+              <div className="min-w-0 space-y-1">
+                <dt className="text-muted-foreground">Staff number</dt>
+                <dd className="break-words font-mono font-medium">{staff.staffNumber}</dd>
               </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Full Name:</span>
-                <span className="font-medium">{fullName}</span>
+              <div className="min-w-0 space-y-1">
+                <dt className="text-muted-foreground">Full name</dt>
+                <dd className="break-words font-medium">{fullName}</dd>
               </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Department:</span>
-                <span>{staff.department?.name ?? "None"}</span>
+              <div className="min-w-0 space-y-1">
+                <dt className="text-muted-foreground">Department</dt>
+                <dd className="break-words">{staff.department?.name ?? "None"}</dd>
               </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Position:</span>
-                <span>{staff.positionTitle}</span>
+              <div className="min-w-0 space-y-1">
+                <dt className="text-muted-foreground">Position</dt>
+                <dd className="break-words">{staff.positionTitle}</dd>
               </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Phone:</span>
-                <span>{staff.contactPhone || "Not recorded"}</span>
+              <div className="min-w-0 space-y-1">
+                <dt className="text-muted-foreground">Phone</dt>
+                <dd className="break-words">{staff.contactPhone || "Not recorded"}</dd>
               </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Email:</span>
-                <span>{staff.contactEmail || "Not recorded"}</span>
+              <div className="min-w-0 space-y-1">
+                <dt className="text-muted-foreground">Email</dt>
+                <dd className="break-all">{staff.contactEmail || "Not recorded"}</dd>
               </div>
-            </div>
+            </dl>
           </div>
 
           {/* Teaching & Class Assignments */}
+          {canReadAssignments && (
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                 <GraduationCap className="size-3.5" />
                 Teaching & Class Assignments
               </h4>
-              {staff.status === "ACTIVE" && (
+              {staff.status === "ACTIVE" && canManageAssignments && (
                 <div className="flex gap-2">
                   <Button
                     className="gap-1 text-xs h-7"
@@ -995,7 +1264,18 @@ function StaffDetailSheet({
             {assignmentsQuery.isPending ? (
               <RequestLoading />
             ) : assignmentsQuery.isError ? (
-              <RequestError error={assignmentsQuery.error} />
+              <div className="space-y-3">
+                <RequestError error={assignmentsQuery.error} />
+                <Button
+                  disabled={assignmentsQuery.isFetching}
+                  onClick={() => void assignmentsQuery.refetch()}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  Retry loading assignments
+                </Button>
+              </div>
             ) : assignmentsQuery.data?.data.length === 0 ? (
               <div className="rounded-lg border p-3 text-xs text-muted-foreground">
                 No teaching assignments recorded for this staff member.
@@ -1036,7 +1316,7 @@ function StaffDetailSheet({
                             ` • Ended: ${new Date(assignment.endedAt).toLocaleDateString()}`}
                         </span>
 
-                        {!isEnded && (
+                        {!isEnded && canManageAssignments && (
                           <Button
                             className="h-6 px-2 text-[11px] text-rose-600 hover:text-rose-700 hover:bg-rose-50"
                             disabled={
@@ -1063,15 +1343,17 @@ function StaffDetailSheet({
               </div>
             )}
           </div>
+          )}
 
           {/* Employment Stints */}
+          {canReadEmployment && (
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                 <Briefcase className="size-3.5" />
                 Employment Stints
               </h4>
-              {staff.status === "ACTIVE" && (
+              {staff.status === "ACTIVE" && canManageEmployment && (
                 <Button
                   className="gap-1 text-xs h-7"
                   onClick={() => setIsStartEmploymentOpen(true)}
@@ -1087,7 +1369,18 @@ function StaffDetailSheet({
             {employmentsQuery.isPending ? (
               <RequestLoading />
             ) : employmentsQuery.isError ? (
-              <RequestError error={employmentsQuery.error} />
+              <div className="space-y-3">
+                <RequestError error={employmentsQuery.error} />
+                <Button
+                  disabled={employmentsQuery.isFetching}
+                  onClick={() => void employmentsQuery.refetch()}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  Retry loading employment history
+                </Button>
+              </div>
             ) : employmentsQuery.data?.data.length === 0 ? (
               <div className="rounded-lg border p-3 text-xs text-muted-foreground">
                 No formal employment stints recorded.
@@ -1107,7 +1400,7 @@ function StaffDetailSheet({
                         {new Date(stint.startsOn).toLocaleDateString()} —{" "}
                         {stint.endsOn ? new Date(stint.endsOn).toLocaleDateString() : "Present"}
                       </span>
-                      {!stint.endsOn && (
+                      {!stint.endsOn && canManageEmployment && (
                         <Button
                           className="h-6 px-2 text-[11px]"
                           onClick={() => setEndingEmploymentId(stint.id)}
@@ -1123,6 +1416,7 @@ function StaffDetailSheet({
               </div>
             )}
           </div>
+          )}
         </div>
 
         <SheetFooter className="border-t pt-4">
@@ -1206,6 +1500,7 @@ function EditStaffProfileDialog({
 }) {
   const { school } = useAuth();
   const queryClient = useQueryClient();
+  const formId = useId();
 
   const [staffNumber, setStaffNumber] = useState(staff.staffNumber);
   const [givenName, setGivenName] = useState(staff.givenName);
@@ -1284,39 +1579,66 @@ function EditStaffProfileDialog({
             )}
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Staff Number</label>
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor={`${formId}-staff-number`}
+              >
+                Staff Number
+              </label>
               <input
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm font-mono focus-visible:ring-2 focus-visible:ring-ring"
+                id={`${formId}-staff-number`}
                 onChange={(e) => setStaffNumber(e.target.value)}
                 required
                 value={staffNumber}
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Given name</label>
-                <input
-                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
-                  onChange={(e) => setGivenName(e.target.value)}
-                  required
-                  value={givenName}
-                />
+            <fieldset className="space-y-1.5">
+              <legend className="sr-only">Staff name</legend>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label
+                    className="text-xs font-medium text-muted-foreground"
+                    htmlFor={`${formId}-given-name`}
+                  >
+                    Given name
+                  </label>
+                  <input
+                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                    id={`${formId}-given-name`}
+                    onChange={(e) => setGivenName(e.target.value)}
+                    required
+                    value={givenName}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label
+                    className="text-xs font-medium text-muted-foreground"
+                    htmlFor={`${formId}-middle-name`}
+                  >
+                    Middle name
+                  </label>
+                  <input
+                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                    id={`${formId}-middle-name`}
+                    onChange={(e) => setMiddleName(e.target.value)}
+                    value={middleName}
+                  />
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Middle name</label>
-                <input
-                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
-                  onChange={(e) => setMiddleName(e.target.value)}
-                  value={middleName}
-                />
-              </div>
-            </div>
+            </fieldset>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Family name</label>
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor={`${formId}-family-name`}
+              >
+                Family name
+              </label>
               <input
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                id={`${formId}-family-name`}
                 onChange={(e) => setFamilyName(e.target.value)}
                 required
                 value={familyName}
@@ -1324,9 +1646,15 @@ function EditStaffProfileDialog({
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Position Title</label>
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor={`${formId}-position-title`}
+              >
+                Position Title
+              </label>
               <input
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                id={`${formId}-position-title`}
                 onChange={(e) => setPositionTitle(e.target.value)}
                 required
                 value={positionTitle}
@@ -1334,9 +1662,15 @@ function EditStaffProfileDialog({
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Department</label>
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor={`${formId}-department`}
+              >
+                Department
+              </label>
               <select
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                id={`${formId}-department`}
                 onChange={(e) => setDepartmentId(e.target.value)}
                 value={departmentId}
               >
@@ -1353,17 +1687,29 @@ function EditStaffProfileDialog({
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Phone</label>
+                <label
+                  className="text-xs font-medium text-muted-foreground"
+                  htmlFor={`${formId}-contact-phone`}
+                >
+                  Phone
+                </label>
                 <input
                   className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                  id={`${formId}-contact-phone`}
                   onChange={(e) => setContactPhone(e.target.value)}
                   value={contactPhone}
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Email</label>
+                <label
+                  className="text-xs font-medium text-muted-foreground"
+                  htmlFor={`${formId}-contact-email`}
+                >
+                  Email
+                </label>
                 <input
                   className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                  id={`${formId}-contact-email`}
                   onChange={(e) => setContactEmail(e.target.value)}
                   type="email"
                   value={contactEmail}
@@ -1511,13 +1857,23 @@ function AssignClassTeacherDialog({
   const { school } = useAuth();
   const queryClient = useQueryClient();
 
+  const [academicYearId, setAcademicYearId] = useState("");
   const [classId, setClassId] = useState("");
   const [streamId, setStreamId] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
 
-  const classesQuery = useSchoolList<AcademicClass>("/configuration/classes", { limit: 100 }, { enabled: open });
+  const yearsQuery = useSchoolList<StaffAcademicYear>(
+    "/academic-years",
+    { limit: 100 },
+    { enabled: open },
+  );
+  const classesQuery = useSchoolList<AcademicClass>(
+    "/classes",
+    { academicYearId: academicYearId || undefined, limit: 100 },
+    { enabled: open && Boolean(academicYearId) },
+  );
   const streamsQuery = useSchoolList<ClassStream>(
-    "/configuration/streams",
+    "/streams",
     { classId: classId || undefined, limit: 100 },
     { enabled: open && Boolean(classId) },
   );
@@ -1547,8 +1903,8 @@ function AssignClassTeacherDialog({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
-    if (!classId) {
-      setFormError("Please select a class.");
+    if (!academicYearId || !classId) {
+      setFormError("Please select an academic year and class.");
       return;
     }
     assignMutation.mutate();
@@ -1574,11 +1930,39 @@ function AssignClassTeacherDialog({
             )}
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">
+              <label className="text-xs font-medium text-muted-foreground" htmlFor="staff-class-year">
+                Academic Year <span className="text-destructive">*</span>
+              </label>
+              <select
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                id="staff-class-year"
+                onChange={(e) => {
+                  setAcademicYearId(e.target.value);
+                  setClassId("");
+                  setStreamId("");
+                }}
+                required
+                value={academicYearId}
+              >
+                <option value="">Select an academic year...</option>
+                {yearsQuery.data?.data
+                  .filter((year) => year.status === "ACTIVE")
+                  .map((year) => (
+                    <option key={year.id} value={year.id}>
+                      {year.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground" htmlFor="staff-class-select">
                 Class <span className="text-destructive">*</span>
               </label>
               <select
                 className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                disabled={!academicYearId}
+                id="staff-class-select"
                 onChange={(e) => {
                   setClassId(e.target.value);
                   setStreamId("");
@@ -1598,12 +1982,13 @@ function AssignClassTeacherDialog({
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">
+              <label className="text-xs font-medium text-muted-foreground" htmlFor="staff-stream-select">
                 Stream / Section (Optional)
               </label>
               <select
                 className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
                 disabled={!classId}
+                id="staff-stream-select"
                 onChange={(e) => setStreamId(e.target.value)}
                 value={streamId}
               >
@@ -1657,15 +2042,26 @@ function AssignSubjectTeacherDialog({
   const { school } = useAuth();
   const queryClient = useQueryClient();
 
+  const [academicYearId, setAcademicYearId] = useState("");
+  const [classId, setClassId] = useState("");
   const [classSubjectAssignmentId, setClassSubjectAssignmentId] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
 
-  const classesQuery = useSchoolList<AcademicClass>("/configuration/classes", { limit: 100 }, { enabled: open });
-  const subjectsQuery = useSchoolList<SubjectRecord>("/configuration/subjects", { limit: 100 }, { enabled: open });
-  const classSubjectsQuery = useSchoolList<ClassSubjectRecord>(
-    "/configuration/class-subjects",
+  const yearsQuery = useSchoolList<StaffAcademicYear>(
+    "/academic-years",
     { limit: 100 },
     { enabled: open },
+  );
+  const classesQuery = useSchoolList<AcademicClass>(
+    "/classes",
+    { academicYearId: academicYearId || undefined, limit: 100 },
+    { enabled: open && Boolean(academicYearId) },
+  );
+  const subjectsQuery = useSchoolList<SubjectRecord>("/subjects", { limit: 100 }, { enabled: open });
+  const classSubjectsQuery = useSchoolList<ClassSubjectRecord>(
+    "/class-subjects",
+    { classId: classId || undefined, limit: 100 },
+    { enabled: open && Boolean(classId) },
   );
 
   const assignMutation = useMutation({
@@ -1690,8 +2086,8 @@ function AssignSubjectTeacherDialog({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
-    if (!classSubjectAssignmentId) {
-      setFormError("Please select a class-subject offering.");
+    if (!academicYearId || !classId || !classSubjectAssignmentId) {
+      setFormError("Please select an academic year, class, and subject offering.");
       return;
     }
     assignMutation.mutate();
@@ -1723,11 +2119,65 @@ function AssignSubjectTeacherDialog({
             )}
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">
+              <label className="text-xs font-medium text-muted-foreground" htmlFor="staff-subject-year">
+                Academic Year <span className="text-destructive">*</span>
+              </label>
+              <select
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                id="staff-subject-year"
+                onChange={(e) => {
+                  setAcademicYearId(e.target.value);
+                  setClassId("");
+                  setClassSubjectAssignmentId("");
+                }}
+                required
+                value={academicYearId}
+              >
+                <option value="">Select an academic year...</option>
+                {yearsQuery.data?.data
+                  .filter((year) => year.status === "ACTIVE")
+                  .map((year) => (
+                    <option key={year.id} value={year.id}>
+                      {year.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground" htmlFor="staff-subject-class">
+                Class <span className="text-destructive">*</span>
+              </label>
+              <select
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                disabled={!academicYearId}
+                id="staff-subject-class"
+                onChange={(e) => {
+                  setClassId(e.target.value);
+                  setClassSubjectAssignmentId("");
+                }}
+                required
+                value={classId}
+              >
+                <option value="">Select a class...</option>
+                {classesQuery.data?.data
+                  .filter((academicClass) => academicClass.status === "ACTIVE")
+                  .map((academicClass) => (
+                    <option key={academicClass.id} value={academicClass.id}>
+                      {academicClass.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground" htmlFor="staff-subject-offering">
                 Class & Subject Offering <span className="text-destructive">*</span>
               </label>
               <select
                 className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                disabled={!classId}
+                id="staff-subject-offering"
                 onChange={(e) => setClassSubjectAssignmentId(e.target.value)}
                 required
                 value={classSubjectAssignmentId}
@@ -1780,6 +2230,7 @@ function StartEmploymentDialog({
 }) {
   const { school } = useAuth();
   const queryClient = useQueryClient();
+  const formId = useId();
 
   const [positionTitle, setPositionTitle] = useState("");
   const [startsOn, setStartsOn] = useState(new Date().toISOString().slice(0, 10));
@@ -1837,11 +2288,15 @@ function StartEmploymentDialog({
             )}
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor={`${formId}-position-title`}
+              >
                 Position Title <span className="text-destructive">*</span>
               </label>
               <input
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                id={`${formId}-position-title`}
                 onChange={(e) => setPositionTitle(e.target.value)}
                 placeholder="e.g. Senior Teacher"
                 required
@@ -1850,11 +2305,15 @@ function StartEmploymentDialog({
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor={`${formId}-start-date`}
+              >
                 Start Date <span className="text-destructive">*</span>
               </label>
               <input
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                id={`${formId}-start-date`}
                 onChange={(e) => setStartsOn(e.target.value)}
                 required
                 type="date"
@@ -1896,6 +2355,7 @@ function EndEmploymentDialog({
 }) {
   const { school } = useAuth();
   const queryClient = useQueryClient();
+  const formId = useId();
 
   const [endsOn, setEndsOn] = useState(new Date().toISOString().slice(0, 10));
   const [formError, setFormError] = useState<string | null>(null);
@@ -1952,11 +2412,15 @@ function EndEmploymentDialog({
             )}
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor={`${formId}-end-date`}
+              >
                 End Date <span className="text-destructive">*</span>
               </label>
               <input
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                id={`${formId}-end-date`}
                 onChange={(e) => setEndsOn(e.target.value)}
                 required
                 type="date"
@@ -1994,6 +2458,7 @@ function CreateDepartmentDialog({
 }) {
   const { school } = useAuth();
   const queryClient = useQueryClient();
+  const formId = useId();
 
   const [name, setName] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
@@ -2048,11 +2513,15 @@ function CreateDepartmentDialog({
             )}
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor={`${formId}-department-name`}
+              >
                 Department Name <span className="text-destructive">*</span>
               </label>
               <input
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                id={`${formId}-department-name`}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. Science & Mathematics"
                 required
@@ -2092,6 +2561,7 @@ function EditDepartmentDialog({
 }) {
   const { school } = useAuth();
   const queryClient = useQueryClient();
+  const formId = useId();
 
   const [name, setName] = useState(department.name);
   const [formError, setFormError] = useState<string | null>(null);
@@ -2145,9 +2615,15 @@ function EditDepartmentDialog({
             )}
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Department Name</label>
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor={`${formId}-department-name`}
+              >
+                Department Name
+              </label>
               <input
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                id={`${formId}-department-name`}
                 onChange={(e) => setName(e.target.value)}
                 required
                 value={name}

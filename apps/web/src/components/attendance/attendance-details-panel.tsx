@@ -1,7 +1,7 @@
 import { ClipboardCheck } from "lucide-react";
 import {
-  AttendanceStatusBadge,
   type AttendanceStatus,
+  AttendanceStatusBadge,
 } from "@/components/attendance/attendance-status-badge";
 import {
   Card,

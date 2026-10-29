@@ -5,12 +5,12 @@ import {
   FileBarChart,
   GraduationCap,
   LayoutDashboard,
+  type LucideIcon,
   Settings2,
   UserRoundPlus,
   UsersRound,
   WalletCards,
   Waypoints,
-  type LucideIcon,
 } from "lucide-react";
 
 export type NavigationItem = {
@@ -18,6 +18,8 @@ export type NavigationItem = {
   href: string;
   description: string;
   icon: LucideIcon;
+  requiredPermissions?: readonly string[];
+  requiredPermissionSets?: readonly (readonly string[])[];
 };
 
 export const navigationItems: NavigationItem[] = [
@@ -30,62 +32,127 @@ export const navigationItems: NavigationItem[] = [
   {
     label: "Admissions",
     href: "/admissions",
-    description: "Admissions workflows will be available here.",
+    description: "Review and manage school admission applications.",
     icon: UserRoundPlus,
+    requiredPermissions: ["admissions.application.read"],
   },
   {
     label: "Students",
     href: "/students",
-    description: "Student records and related workflows will be available here.",
+    description: "View student profiles and linked guardian records.",
     icon: GraduationCap,
+    requiredPermissions: ["students.profile.read"],
   },
   {
     label: "Academics",
     href: "/academics",
-    description: "Academic setup and learning information will be available here.",
+    description: "Manage academic years, terms, classes, streams, and subjects.",
     icon: BookOpen,
+    requiredPermissions: ["academics.configuration.read"],
   },
   {
     label: "Attendance",
     href: "/attendance",
-    description: "Attendance tools will be available here.",
+    description: "Manage school attendance registers and records.",
     icon: ClipboardCheck,
+    requiredPermissions: ["attendance.register.read"],
   },
   {
     label: "Examinations",
     href: "/examinations",
-    description: "Examination workflows will be available here.",
+    description: "Manage assessments and review student results.",
     icon: FileBarChart,
+    requiredPermissions: ["assessments.read"],
   },
   {
     label: "Finance",
     href: "/finance",
-    description: "Finance tools will be available here.",
+    description: "Manage fee structures, accounts, and payment workflows.",
     icon: WalletCards,
+    requiredPermissions: [
+      "finance.accounts.read",
+      "finance.fees.read",
+      "finance.fees.manage",
+      "finance.reports.read",
+      "finance.payments.read",
+      "finance.payments.record",
+      "finance.adjustments.manage",
+      "finance.refunds.manage",
+      "finance.payments.reconcile",
+    ],
+  },
+  {
+    label: "Library",
+    href: "/library",
+    description: "Library catalog and circulation overview.",
+    icon: BookOpen,
+    requiredPermissions: [
+      "library.catalog.read",
+      "library.catalog.manage",
+      "library.loans.read",
+      "library.loans.manage",
+      "library.reports.read",
+    ],
   },
   {
     label: "Staff",
     href: "/staff",
-    description: "Staff workflows will be available here.",
+    description: "Manage staff profiles, departments, employment, and assignments.",
     icon: UsersRound,
+    requiredPermissions: ["staff.profile.read"],
   },
   {
     label: "Timetable",
     href: "/timetable",
-    description: "Timetable planning will be available here.",
+    description: "View and manage the school's timetable.",
     icon: CalendarDays,
+    requiredPermissions: ["timetable.read"],
   },
   {
     label: "Reports",
     href: "/reports",
-    description: "School reports will be available here.",
+    description: "Review school reports available to your permissions.",
     icon: Waypoints,
+    requiredPermissionSets: [
+      ["reports.exports.generate", "reports.students.read", "students.profile.read"],
+      ["reports.exports.generate", "reports.attendance.read", "attendance.register.read"],
+      [
+        "reports.exports.generate",
+        "reports.academics.read",
+        "assessments.read",
+        "academics.configuration.read",
+      ],
+      ["reports.exports.generate", "reports.finance.read", "finance.reports.read"],
+      ["reports.exports.generate", "reports.staff.read", "staff.profile.read"],
+    ],
   },
   {
     label: "Settings",
     href: "/settings",
-    description: "Workspace preferences will be available here.",
+    description: "View or update the school profile and contact details.",
     icon: Settings2,
+    requiredPermissions: ["school.profile.read"],
   },
 ];
 
+export type SchoolNavigationAccess =
+  | {
+      permissions: readonly string[];
+    }
+  | null
+  | undefined;
+
+export function getVisibleSchoolNavigationItems(access: SchoolNavigationAccess) {
+  const granted = new Set(access?.permissions ?? []);
+  return navigationItems.filter(
+    (item) =>
+      item.href === "/dashboard" ||
+      (!item.requiredPermissions && !item.requiredPermissionSets) ||
+      Boolean(item.requiredPermissions?.some((permission) => granted.has(permission))) ||
+      Boolean(
+        item.requiredPermissionSets?.some((permissions) =>
+          permissions.every((permission) => granted.has(permission)),
+        ),
+      ),
+  );
+}

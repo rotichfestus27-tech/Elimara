@@ -1,7 +1,7 @@
 import { FileText } from "lucide-react";
 import {
-  ApplicationStatusBadge,
   type ApplicationStatus,
+  ApplicationStatusBadge,
 } from "@/components/admissions/application-status-badge";
 import {
   Card,

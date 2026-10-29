@@ -13,9 +13,8 @@ import {
 export type StudentDetails = {
   admissionNumber: string;
   studentName: string;
-  programme: string;
-  contact: string;
-  enrolmentDate: string;
+  dateOfBirth: string;
+  recordCreated: string;
   status: StudentStatus;
 };
 
@@ -29,9 +28,8 @@ const detailLabels: Array<{
 }> = [
   { key: "admissionNumber", label: "Admission number" },
   { key: "studentName", label: "Student name" },
-  { key: "programme", label: "Programme / class" },
-  { key: "contact", label: "Contact" },
-  { key: "enrolmentDate", label: "Enrolment date" },
+  { key: "dateOfBirth", label: "Date of birth" },
+  { key: "recordCreated", label: "Record created" },
 ];
 
 export function StudentDetailsPanel({ student }: StudentDetailsPanelProps) {
@@ -40,7 +38,7 @@ export function StudentDetailsPanel({ student }: StudentDetailsPanelProps) {
       <CardHeader>
         <CardTitle className="text-base">Student details</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Student information will be available when records are connected.
+          Profile information available from the student record.
         </p>
       </CardHeader>
       <CardContent>

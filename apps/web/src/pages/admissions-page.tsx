@@ -12,13 +12,19 @@ import {
   Users,
   XCircle,
 } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Link } from "react-router";
 import { useAuth } from "@/app/auth-provider";
 import { RequestError, RequestLoading } from "@/components/api/request-state";
+import {
+  ApplicationStatusBadge,
+  type ApplicationStatus,
+} from "@/components/admissions/application-status-badge";
+import { PageHeader } from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { UnauthorizedState } from "@/components/ui/data-states";
 import {
   Dialog,
   DialogContent,
@@ -38,14 +44,7 @@ import {
 import { apiRequest } from "@/lib/api/client";
 import { useSchoolList } from "@/lib/api/school-data";
 
-export type AdmissionStatus =
-  | "DRAFT"
-  | "SUBMITTED"
-  | "UNDER_REVIEW"
-  | "ACCEPTED"
-  | "REJECTED"
-  | "WITHDRAWN"
-  | "ADMITTED";
+export type AdmissionStatus = ApplicationStatus;
 
 export type ApplicationGuardian = {
   id?: string;
@@ -111,28 +110,17 @@ type GuardianDirectoryRecord = {
   phone: string | null;
 };
 
-const statusStyles: Record<AdmissionStatus, { label: string; className: string }> = {
-  DRAFT: { label: "Draft", className: "bg-slate-100 text-slate-700 border-slate-200" },
-  SUBMITTED: { label: "Submitted", className: "bg-blue-50 text-blue-700 border-blue-200" },
-  UNDER_REVIEW: { label: "Under review", className: "bg-amber-50 text-amber-700 border-amber-200" },
-  ACCEPTED: { label: "Accepted", className: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-  REJECTED: { label: "Rejected", className: "bg-rose-50 text-rose-700 border-rose-200" },
-  WITHDRAWN: { label: "Withdrawn", className: "bg-zinc-100 text-zinc-600 border-zinc-200" },
-  ADMITTED: { label: "Admitted", className: "bg-purple-50 text-purple-700 border-purple-200" },
-};
-
-function StatusBadge({ status }: { status: AdmissionStatus }) {
-  const config = statusStyles[status] ?? { label: status, className: "bg-muted text-muted-foreground" };
-  return (
-    <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${config.className}`}
-    >
-      {config.label}
-    </span>
-  );
-}
-
 export function AdmissionsPage() {
+  const { school } = useAuth();
+  const canReadApplications = Boolean(school?.permissions.includes("admissions.application.read"));
+  const canCreateApplications = Boolean(
+    school?.permissions.includes("admissions.application.create"),
+  );
+  const canAdmitApplications = Boolean(
+    school?.permissions.includes("admissions.application.admit"),
+  );
+  const [offset, setOffset] = useState(0);
+  const [pageSize, setPageSize] = useState(25);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
@@ -145,14 +133,18 @@ export function AdmissionsPage() {
   const [isAdmitOpen, setIsAdmitOpen] = useState(false);
 
   // Queries
-  const applications = useSchoolList<AdmissionApplication>("/admission-applications", {
-    limit: 50,
-    offset: 0,
-    q: searchTerm.trim() || undefined,
-    status: statusFilter === "all" ? undefined : statusFilter,
-    sortBy: "createdAt",
-    sortOrder: "desc",
-  });
+  const applications = useSchoolList<AdmissionApplication>(
+    "/admission-applications",
+    {
+      limit: pageSize,
+      offset,
+      q: searchTerm.trim() || undefined,
+      status: statusFilter === "all" ? undefined : statusFilter,
+      sortBy: "createdAt",
+      sortOrder: "desc",
+    },
+    { enabled: canReadApplications },
+  );
 
   const selectedApplication = applications.data?.data.find(
     (app) => app.id === selectedApplicationId,
@@ -160,182 +152,291 @@ export function AdmissionsPage() {
 
   return (
     <div className="space-y-8">
-      <section className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-        <div className="max-w-2xl space-y-2">
-          <p className="text-sm font-medium text-primary">Enrolment</p>
-          <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Admissions</h2>
-          <p className="text-sm leading-6 text-muted-foreground sm:text-base">
-            Review, process, and admit learner applications recorded for your school.
-          </p>
-        </div>
-        <Button className="shrink-0 gap-2" onClick={() => setIsCreateOpen(true)}>
-          <Plus className="size-4" />
-          New Application
-        </Button>
-      </section>
-
-      <section aria-labelledby="applications-heading" className="space-y-4">
-        <div>
-          <h3 id="applications-heading" className="text-base font-semibold">
-            Applications
-          </h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Search by applicant name and filter by status. Click an application to inspect or transition.
-          </p>
-        </div>
-
-        <Card className="shadow-none">
-          <CardContent className="space-y-5 p-4 sm:p-5">
-            <div className="grid gap-3 md:grid-cols-[minmax(220px,1fr)_190px]">
-              <label className="relative block">
-                <span className="sr-only">Search applicants</span>
-                <Search
-                  aria-hidden="true"
-                  className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-                />
-                <input
-                  className="h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm outline-none transition-shadow placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
-                  onChange={(event) => setSearchTerm(event.target.value)}
-                  placeholder="Search applicants"
-                  type="search"
-                  value={searchTerm}
-                />
-              </label>
-
-              <label className="space-y-1.5">
-                <span className="text-xs font-medium text-muted-foreground">Application status</span>
-                <select
-                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  onChange={(event) => setStatusFilter(event.target.value)}
-                  value={statusFilter}
-                >
-                  <option value="all">All statuses</option>
-                  <option value="DRAFT">Draft</option>
-                  <option value="SUBMITTED">Submitted</option>
-                  <option value="UNDER_REVIEW">Under review</option>
-                  <option value="ACCEPTED">Accepted</option>
-                  <option value="REJECTED">Rejected</option>
-                  <option value="WITHDRAWN">Withdrawn</option>
-                  <option value="ADMITTED">Admitted</option>
-                </select>
-              </label>
-            </div>
-
-            <div aria-live="polite" className="overflow-hidden rounded-lg border">
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[760px] border-collapse text-left text-sm">
-                  <caption className="sr-only">Admissions applications</caption>
-                  <thead className="bg-muted/50 text-xs text-muted-foreground">
-                    <tr>
-                      <th className="px-4 py-3 font-medium" scope="col">Applicant</th>
-                      <th className="px-4 py-3 font-medium" scope="col">Date of Birth</th>
-                      <th className="px-4 py-3 font-medium" scope="col">Guardians</th>
-                      <th className="px-4 py-3 font-medium" scope="col">Created</th>
-                      <th className="px-4 py-3 font-medium" scope="col">Status</th>
-                      <th className="px-4 py-3 text-right font-medium" scope="col">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {applications.isPending ? (
-                      <tr><td colSpan={6}><RequestLoading /></td></tr>
-                    ) : applications.isError ? (
-                      <tr><td colSpan={6}><RequestError error={applications.error} /></td></tr>
-                    ) : applications.data.data.length === 0 ? (
-                      <tr>
-                        <td className="px-4 py-12 text-center text-sm text-muted-foreground" colSpan={6}>
-                          No applications found matching your criteria.
-                        </td>
-                      </tr>
-                    ) : (
-                      applications.data.data.map((application) => {
-                        const fullName = [
-                          application.givenName,
-                          application.middleName,
-                          application.familyName,
-                        ]
-                          .filter(Boolean)
-                          .join(" ");
-
-                        return (
-                          <tr
-                            className="cursor-pointer border-t transition-colors hover:bg-muted/40"
-                            key={application.id}
-                            onClick={() => setSelectedApplicationId(application.id)}
-                          >
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-2">
-                                <span className="font-medium text-foreground">{fullName}</span>
-                                {application.possibleDuplicate && (
-                                  <span
-                                    className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800"
-                                    title="Possible duplicate application or learner record detected"
-                                  >
-                                    Duplicate
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-4 py-3 text-muted-foreground">
-                              {application.dateOfBirth ? application.dateOfBirth : "—"}
-                            </td>
-                            <td className="px-4 py-3 text-muted-foreground">
-                              {application.guardians.length > 0
-                                ? application.guardians
-                                    .map(
-                                      (g) =>
-                                        `${[g.givenName, g.familyName].filter(Boolean).join(" ")} (${g.relationship})`,
-                                    )
-                                    .join(", ")
-                                : "—"}
-                            </td>
-                            <td className="px-4 py-3 text-muted-foreground">
-                              {new Date(application.createdAt).toLocaleDateString()}
-                            </td>
-                            <td className="px-4 py-3">
-                              <StatusBadge status={application.status} />
-                            </td>
-                            <td className="px-4 py-3 text-right">
-                              <Button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSelectedApplicationId(application.id);
-                                }}
-                                size="sm"
-                                variant="ghost"
-                              >
-                                View
-                              </Button>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {!applications.isError && !applications.isPending && (
-              <p className="text-xs text-muted-foreground">
-                Showing {applications.data.data.length} of {applications.data.meta.total} applications.
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      </section>
-
-      {/* New Application Sheet */}
-      <CreateApplicationSheet
-        onClose={() => setIsCreateOpen(false)}
-        onCreated={(id) => {
-          setIsCreateOpen(false);
-          setSelectedApplicationId(id);
-        }}
-        open={isCreateOpen}
+      <PageHeader
+        actions={
+          canCreateApplications ? (
+            <Button className="shrink-0 gap-2" onClick={() => setIsCreateOpen(true)}>
+              <Plus className="size-4" />
+              New Application
+            </Button>
+          ) : undefined
+        }
+        description="Review, process, and admit learner applications recorded for your school."
+        eyebrow={<p className="text-sm font-medium text-primary">Enrolment</p>}
+        title="Admissions"
       />
 
+      {!canReadApplications ? (
+        <Card className="shadow-none">
+          <CardContent className="p-6">
+            <UnauthorizedState
+              description="Your school access does not include permission to view admission applications."
+              title="Admissions access denied"
+            />
+          </CardContent>
+        </Card>
+      ) : (
+        <section aria-labelledby="applications-heading" className="space-y-4">
+          <div>
+            <h3 id="applications-heading" className="text-base font-semibold">
+              Applications
+            </h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Search by applicant name and filter by status. Click an application to inspect or
+              transition.
+            </p>
+          </div>
+
+          <Card className="shadow-none">
+            <CardContent className="space-y-5 p-4 sm:p-5">
+              <div className="grid gap-3 md:grid-cols-[minmax(220px,1fr)_190px]">
+                <label className="relative block">
+                  <span className="sr-only">Search applicants</span>
+                  <Search
+                    aria-hidden="true"
+                    className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                  />
+                  <input
+                    className="h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm outline-none transition-shadow placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                    onChange={(event) => {
+                      setSearchTerm(event.target.value);
+                      setOffset(0);
+                      setPageSize(25);
+                    }}
+                    placeholder="Search applicants"
+                    type="search"
+                    value={searchTerm}
+                  />
+                </label>
+
+                <label className="space-y-1.5">
+                  <span className="text-xs font-medium text-muted-foreground">
+                    Application status
+                  </span>
+                  <select
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    onChange={(event) => {
+                      setStatusFilter(event.target.value);
+                      setOffset(0);
+                      setPageSize(25);
+                    }}
+                    value={statusFilter}
+                  >
+                    <option value="all">All statuses</option>
+                    <option value="DRAFT">Draft</option>
+                    <option value="SUBMITTED">Submitted</option>
+                    <option value="UNDER_REVIEW">Under review</option>
+                    <option value="ACCEPTED">Accepted</option>
+                    <option value="REJECTED">Rejected</option>
+                    <option value="WITHDRAWN">Withdrawn</option>
+                    <option value="ADMITTED">Admitted</option>
+                  </select>
+                </label>
+              </div>
+
+              <div aria-live="polite" className="overflow-hidden rounded-lg border">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+                    <caption className="sr-only">Admissions applications</caption>
+                    <thead className="bg-muted/50 text-xs text-muted-foreground">
+                      <tr>
+                        <th className="px-4 py-3 font-medium" scope="col">
+                          Applicant
+                        </th>
+                        <th className="px-4 py-3 font-medium" scope="col">
+                          Date of Birth
+                        </th>
+                        <th className="px-4 py-3 font-medium" scope="col">
+                          Guardians
+                        </th>
+                        <th className="px-4 py-3 font-medium" scope="col">
+                          Created
+                        </th>
+                        <th className="px-4 py-3 font-medium" scope="col">
+                          Status
+                        </th>
+                        <th className="px-4 py-3 text-right font-medium" scope="col">
+                          Action
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {applications.isPending ? (
+                        <tr>
+                          <td colSpan={6}>
+                            <RequestLoading />
+                          </td>
+                        </tr>
+                      ) : applications.isError ? (
+                        <tr>
+                          <td colSpan={6}>
+                            <div className="space-y-3 p-4">
+                              <RequestError error={applications.error} />
+                              <Button
+                                disabled={applications.isFetching}
+                                onClick={() => void applications.refetch()}
+                                size="sm"
+                                type="button"
+                                variant="outline"
+                              >
+                                Retry loading applications
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : applications.data.data.length === 0 ? (
+                        <tr>
+                          <td
+                            className="px-4 py-12 text-center text-sm text-muted-foreground"
+                            colSpan={6}
+                          >
+                            No applications found matching your criteria.
+                          </td>
+                        </tr>
+                      ) : (
+                        applications.data.data.map((application) => {
+                          const fullName = [
+                            application.givenName,
+                            application.middleName,
+                            application.familyName,
+                          ]
+                            .filter(Boolean)
+                            .join(" ");
+
+                          return (
+                            <tr
+                              className="cursor-pointer border-t transition-colors hover:bg-muted/40"
+                              key={application.id}
+                              onClick={() => setSelectedApplicationId(application.id)}
+                            >
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium text-foreground">{fullName}</span>
+                                  {application.possibleDuplicate && (
+                                    <span
+                                      className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800"
+                                      title="Possible duplicate application or learner record detected"
+                                    >
+                                      Duplicate
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 text-muted-foreground">
+                                {application.dateOfBirth ? application.dateOfBirth : "—"}
+                              </td>
+                              <td className="px-4 py-3 text-muted-foreground">
+                                {application.guardians.length > 0
+                                  ? application.guardians
+                                      .map(
+                                        (g) =>
+                                          `${[g.givenName, g.familyName].filter(Boolean).join(" ")} (${g.relationship})`,
+                                      )
+                                      .join(", ")
+                                  : "—"}
+                              </td>
+                              <td className="px-4 py-3 text-muted-foreground">
+                                {new Date(application.createdAt).toLocaleDateString()}
+                              </td>
+                              <td className="px-4 py-3">
+                                <ApplicationStatusBadge status={application.status} />
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                <Button
+                                  aria-label={`View details for ${fullName}`}
+                                  aria-pressed={selectedApplicationId === application.id}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedApplicationId(application.id);
+                                  }}
+                                  size="sm"
+                                  variant="ghost"
+                                >
+                                  View
+                                </Button>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {!applications.isError && !applications.isPending && applications.data && (
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p aria-live="polite" className="text-xs text-muted-foreground">
+                    {applications.data.meta.total === 0
+                      ? "No applications to display."
+                      : `Showing ${applications.data.meta.offset + 1}–${applications.data.meta.offset + applications.data.data.length} of ${applications.data.meta.total} applications.`}
+                  </p>
+                  {applications.data.meta.total > applications.data.meta.limit && (
+                    <nav aria-label="Application pages" className="flex items-center gap-2">
+                      <Button
+                        disabled={applications.data.meta.offset === 0 || applications.isFetching}
+                        onClick={() => {
+                          setPageSize(applications.data.meta.limit);
+                          setOffset(
+                            Math.max(
+                              0,
+                              applications.data.meta.offset - applications.data.meta.limit,
+                            ),
+                          );
+                        }}
+                        size="sm"
+                        type="button"
+                        variant="outline"
+                      >
+                        Previous
+                      </Button>
+                      <span className="text-xs text-muted-foreground">
+                        Page{" "}
+                        {Math.floor(
+                          applications.data.meta.offset / applications.data.meta.limit,
+                        ) + 1}{" "}
+                        of{" "}
+                        {Math.ceil(applications.data.meta.total / applications.data.meta.limit)}
+                      </span>
+                      <Button
+                        disabled={
+                          applications.data.meta.offset + applications.data.data.length >=
+                            applications.data.meta.total ||
+                          applications.isFetching
+                        }
+                        onClick={() => {
+                          setPageSize(applications.data.meta.limit);
+                          setOffset(applications.data.meta.offset + applications.data.meta.limit);
+                        }}
+                        size="sm"
+                        type="button"
+                        variant="outline"
+                      >
+                        Next
+                      </Button>
+                    </nav>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </section>
+      )}
+
+      {/* New Application Sheet */}
+      {canCreateApplications && (
+        <CreateApplicationSheet
+          onClose={() => setIsCreateOpen(false)}
+          onCreated={(id) => {
+            setIsCreateOpen(false);
+            setSelectedApplicationId(id);
+          }}
+          open={isCreateOpen}
+        />
+      )}
+
       {/* Application Details Sheet */}
-      {selectedApplication && (
+      {canReadApplications && selectedApplication && (
         <ApplicationDetailSheet
           application={selectedApplication}
           onAdmitClick={() => setIsAdmitOpen(true)}
@@ -346,7 +447,7 @@ export function AdmissionsPage() {
       )}
 
       {/* Edit Draft Application Sheet */}
-      {selectedApplication && (
+      {canCreateApplications && selectedApplication && (
         <EditDraftApplicationSheet
           application={selectedApplication}
           onClose={() => setIsEditOpen(false)}
@@ -356,7 +457,7 @@ export function AdmissionsPage() {
       )}
 
       {/* Admit Student Modal */}
-      {selectedApplication && (
+      {canAdmitApplications && selectedApplication && (
         <AdmitStudentDialog
           application={selectedApplication}
           onAdmitted={() => {
@@ -385,7 +486,9 @@ function CreateApplicationSheet({
   onCreated: (id: string) => void;
 }) {
   const { school } = useAuth();
+  const canReadGuardians = school?.permissions.includes("guardians.profile.read") ?? false;
   const queryClient = useQueryClient();
+  const fieldId = useId();
 
   const [givenName, setGivenName] = useState("");
   const [middleName, setMiddleName] = useState("");
@@ -394,6 +497,7 @@ function CreateApplicationSheet({
 
   // Guardian Mode: 'new' or 'existing'
   const [guardianMode, setGuardianMode] = useState<"new" | "existing">("new");
+  const activeGuardianMode = canReadGuardians ? guardianMode : "new";
   const [existingGuardianId, setExistingGuardianId] = useState("");
   const [guardianGivenName, setGuardianGivenName] = useState("");
   const [guardianMiddleName, setGuardianMiddleName] = useState("");
@@ -406,7 +510,11 @@ function CreateApplicationSheet({
   const [formError, setFormError] = useState<string | null>(null);
 
   // Load existing school guardians for selection
-  const guardiansQuery = useSchoolList<GuardianDirectoryRecord>("/guardians", { limit: 100 }, { enabled: open });
+  const guardiansQuery = useSchoolList<GuardianDirectoryRecord>(
+    "/guardians",
+    { limit: 100 },
+    { enabled: open && canReadGuardians },
+  );
 
   const resetForm = () => {
     setGivenName("");
@@ -430,7 +538,7 @@ function CreateApplicationSheet({
       if (!school?.id) throw new Error("No school selected.");
 
       const guardianPayload: ApplicationGuardian =
-        guardianMode === "existing"
+        activeGuardianMode === "existing"
           ? {
               existingGuardianId,
               givenName: "",
@@ -489,7 +597,7 @@ function CreateApplicationSheet({
       return;
     }
 
-    if (guardianMode === "existing") {
+    if (activeGuardianMode === "existing") {
       if (!existingGuardianId) {
         setFormError("Please select an existing guardian from the directory.");
         return;
@@ -528,13 +636,19 @@ function CreateApplicationSheet({
           <SheetHeader>
             <SheetTitle>New Admission Application</SheetTitle>
             <SheetDescription>
-              Create an initial application draft. You can specify a new guardian or link an existing guardian from the directory.
+              {canReadGuardians
+                ? "Create an initial application draft. You can specify a new guardian or link an existing guardian from the directory."
+                : "Create an initial application draft and enter the primary guardian's details."}
             </SheetDescription>
           </SheetHeader>
 
           <div className="flex-1 space-y-6 py-6">
             {formError && (
-              <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive flex items-center gap-2">
+              <div
+                aria-live="assertive"
+                className="rounded-md bg-destructive/10 p-3 text-sm text-destructive flex items-center gap-2"
+                role="alert"
+              >
                 <AlertCircle className="size-4 shrink-0" />
                 <span>{formError}</span>
               </div>
@@ -548,10 +662,14 @@ function CreateApplicationSheet({
               </h4>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                  <label className="text-xs font-medium text-muted-foreground">
+                  <label
+                    className="text-xs font-medium text-muted-foreground"
+                    htmlFor={`${fieldId}-applicant-given`}
+                  >
                     Given name <span className="text-destructive">*</span>
                   </label>
                   <input
+                    id={`${fieldId}-applicant-given`}
                     className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
                     onChange={(e) => setGivenName(e.target.value)}
                     placeholder="e.g. Amina"
@@ -560,10 +678,14 @@ function CreateApplicationSheet({
                   />
                 </div>
                 <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                  <label className="text-xs font-medium text-muted-foreground">
+                  <label
+                    className="text-xs font-medium text-muted-foreground"
+                    htmlFor={`${fieldId}-applicant-middle`}
+                  >
                     Middle name
                   </label>
                   <input
+                    id={`${fieldId}-applicant-middle`}
                     className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
                     onChange={(e) => setMiddleName(e.target.value)}
                     placeholder="Optional"
@@ -574,10 +696,14 @@ function CreateApplicationSheet({
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                  <label className="text-xs font-medium text-muted-foreground">
+                  <label
+                    className="text-xs font-medium text-muted-foreground"
+                    htmlFor={`${fieldId}-applicant-family`}
+                  >
                     Family name <span className="text-destructive">*</span>
                   </label>
                   <input
+                    id={`${fieldId}-applicant-family`}
                     className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
                     onChange={(e) => setFamilyName(e.target.value)}
                     placeholder="e.g. Otieno"
@@ -586,10 +712,14 @@ function CreateApplicationSheet({
                   />
                 </div>
                 <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                  <label className="text-xs font-medium text-muted-foreground">
+                  <label
+                    className="text-xs font-medium text-muted-foreground"
+                    htmlFor={`${fieldId}-applicant-dob`}
+                  >
                     Date of birth
                   </label>
                   <input
+                    id={`${fieldId}-applicant-dob`}
                     className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
                     onChange={(e) => setDateOfBirth(e.target.value)}
                     type="date"
@@ -603,34 +733,44 @@ function CreateApplicationSheet({
 
             {/* Guardian Information */}
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
                   <Users className="size-4 text-primary" />
                   Primary Guardian
                 </h4>
-                <div className="flex rounded-md border bg-muted p-0.5 text-xs">
-                  <button
-                    className={`rounded px-2.5 py-1 font-medium transition-colors ${
-                      guardianMode === "new" ? "bg-background text-foreground shadow-xs" : "text-muted-foreground"
-                    }`}
-                    onClick={() => setGuardianMode("new")}
-                    type="button"
-                  >
-                    New Guardian
-                  </button>
-                  <button
-                    className={`rounded px-2.5 py-1 font-medium transition-colors ${
-                      guardianMode === "existing" ? "bg-background text-foreground shadow-xs" : "text-muted-foreground"
-                    }`}
-                    onClick={() => setGuardianMode("existing")}
-                    type="button"
-                  >
-                    Existing Guardian
-                  </button>
-                </div>
+                {canReadGuardians ? (
+                  <div className="flex rounded-md border bg-muted p-0.5 text-xs">
+                    <button
+                      className={`rounded px-2.5 py-1 font-medium transition-colors ${
+                        activeGuardianMode === "new"
+                          ? "bg-background text-foreground shadow-xs"
+                          : "text-muted-foreground"
+                      }`}
+                      onClick={() => setGuardianMode("new")}
+                      type="button"
+                    >
+                      New Guardian
+                    </button>
+                    <button
+                      className={`rounded px-2.5 py-1 font-medium transition-colors ${
+                        activeGuardianMode === "existing"
+                          ? "bg-background text-foreground shadow-xs"
+                          : "text-muted-foreground"
+                      }`}
+                      onClick={() => setGuardianMode("existing")}
+                      type="button"
+                    >
+                      Existing Guardian
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Existing guardian selection requires guardian-profile read permission.
+                  </p>
+                )}
               </div>
 
-              {guardianMode === "existing" ? (
+              {activeGuardianMode === "existing" ? (
                 <div className="space-y-3">
                   <label className="space-y-1.5 block">
                     <span className="text-xs font-medium text-muted-foreground">
@@ -644,7 +784,8 @@ function CreateApplicationSheet({
                       <option value="">Choose a guardian...</option>
                       {guardiansQuery.data?.data.map((g) => (
                         <option key={g.id} value={g.id}>
-                          {[g.givenName, g.familyName].join(" ")} ({g.phone || g.email || "No contact"})
+                          {[g.givenName, g.familyName].join(" ")} (
+                          {g.phone || g.email || "No contact"})
                         </option>
                       ))}
                     </select>
@@ -659,10 +800,14 @@ function CreateApplicationSheet({
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                      <label className="text-xs font-medium text-muted-foreground">
+                      <label
+                        className="text-xs font-medium text-muted-foreground"
+                        htmlFor={`${fieldId}-guardian-given`}
+                      >
                         Given name <span className="text-destructive">*</span>
                       </label>
                       <input
+                        id={`${fieldId}-guardian-given`}
                         className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
                         onChange={(e) => setGuardianGivenName(e.target.value)}
                         placeholder="e.g. Grace"
@@ -670,10 +815,14 @@ function CreateApplicationSheet({
                       />
                     </div>
                     <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                      <label className="text-xs font-medium text-muted-foreground">
+                      <label
+                        className="text-xs font-medium text-muted-foreground"
+                        htmlFor={`${fieldId}-guardian-middle`}
+                      >
                         Middle name
                       </label>
                       <input
+                        id={`${fieldId}-guardian-middle`}
                         className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
                         onChange={(e) => setGuardianMiddleName(e.target.value)}
                         placeholder="Optional"
@@ -683,10 +832,14 @@ function CreateApplicationSheet({
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-muted-foreground">
+                    <label
+                      className="text-xs font-medium text-muted-foreground"
+                      htmlFor={`${fieldId}-guardian-family`}
+                    >
                       Family name <span className="text-destructive">*</span>
                     </label>
                     <input
+                      id={`${fieldId}-guardian-family`}
                       className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
                       onChange={(e) => setGuardianFamilyName(e.target.value)}
                       placeholder="e.g. Otieno"
@@ -696,10 +849,14 @@ function CreateApplicationSheet({
 
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                      <label className="text-xs font-medium text-muted-foreground">
+                      <label
+                        className="text-xs font-medium text-muted-foreground"
+                        htmlFor={`${fieldId}-guardian-phone`}
+                      >
                         Phone number
                       </label>
                       <input
+                        id={`${fieldId}-guardian-phone`}
                         className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
                         onChange={(e) => setGuardianPhone(e.target.value)}
                         placeholder="e.g. +254700000000"
@@ -707,10 +864,14 @@ function CreateApplicationSheet({
                       />
                     </div>
                     <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                      <label className="text-xs font-medium text-muted-foreground">
+                      <label
+                        className="text-xs font-medium text-muted-foreground"
+                        htmlFor={`${fieldId}-guardian-email`}
+                      >
                         Email address
                       </label>
                       <input
+                        id={`${fieldId}-guardian-email`}
                         className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
                         onChange={(e) => setGuardianEmail(e.target.value)}
                         placeholder="e.g. grace@example.com"
@@ -728,10 +889,14 @@ function CreateApplicationSheet({
               {/* Relationship & Permissions */}
               <div className="grid grid-cols-2 gap-3 pt-2">
                 <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                  <label className="text-xs font-medium text-muted-foreground">
+                  <label
+                    className="text-xs font-medium text-muted-foreground"
+                    htmlFor={`${fieldId}-relationship`}
+                  >
                     Relationship <span className="text-destructive">*</span>
                   </label>
                   <select
+                    id={`${fieldId}-relationship`}
                     className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
                     onChange={(e) => setRelationship(e.target.value)}
                     value={relationship}
@@ -754,9 +919,7 @@ function CreateApplicationSheet({
                       onChange={(e) => setAuthorizedAccess(e.target.checked)}
                       type="checkbox"
                     />
-                    <span className="text-xs font-medium text-foreground">
-                      Authorized Contact
-                    </span>
+                    <span className="text-xs font-medium text-foreground">Authorized Contact</span>
                   </label>
                 </div>
               </div>
@@ -764,7 +927,12 @@ function CreateApplicationSheet({
           </div>
 
           <SheetFooter className="border-t pt-4">
-            <Button disabled={createMutation.isPending} onClick={onClose} type="button" variant="outline">
+            <Button
+              disabled={createMutation.isPending}
+              onClick={onClose}
+              type="button"
+              variant="outline"
+            >
               Cancel
             </Button>
             <Button disabled={createMutation.isPending} type="submit">
@@ -796,6 +964,9 @@ function ApplicationDetailSheet({
 }) {
   const { school } = useAuth();
   const queryClient = useQueryClient();
+  const canCreate = Boolean(school?.permissions.includes("admissions.application.create"));
+  const canReview = Boolean(school?.permissions.includes("admissions.application.review"));
+  const canAdmit = Boolean(school?.permissions.includes("admissions.application.admit"));
   const [transitionError, setTransitionError] = useState<string | null>(null);
 
   const transitionMutation = useMutation({
@@ -829,7 +1000,7 @@ function ApplicationDetailSheet({
       <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
         <SheetHeader>
           <div className="flex items-center justify-between pr-4">
-            <StatusBadge status={application.status} />
+            <ApplicationStatusBadge status={application.status} />
             {application.possibleDuplicate && (
               <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
                 Possible Duplicate
@@ -844,7 +1015,10 @@ function ApplicationDetailSheet({
 
         <div className="space-y-6 py-6">
           {transitionError && (
-            <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive flex items-center gap-2">
+            <div
+              className="rounded-md bg-destructive/10 p-3 text-sm text-destructive flex items-center gap-2"
+              role="alert"
+            >
               <AlertCircle className="size-4 shrink-0" />
               <span>{transitionError}</span>
             </div>
@@ -891,8 +1065,23 @@ function ApplicationDetailSheet({
               Associated Guardians ({application.guardians.length})
             </h4>
             <div className="space-y-2">
-              {application.guardians.map((g, idx) => (
-                <div key={idx} className="rounded-lg border bg-card p-3 text-sm space-y-1">
+              {application.guardians.map((g) => (
+                <div
+                  key={
+                    g.id ??
+                    g.guardianId ??
+                    g.existingGuardianId ??
+                    [
+                      g.givenName,
+                      g.middleName,
+                      g.familyName,
+                      g.email,
+                      g.phone,
+                      g.relationship,
+                    ].join("|")
+                  }
+                  className="rounded-lg border bg-card p-3 text-sm space-y-1"
+                >
                   <div className="flex items-center justify-between">
                     <span className="font-medium text-foreground">
                       {[g.givenName, g.middleName, g.familyName].filter(Boolean).join(" ")}
@@ -907,7 +1096,9 @@ function ApplicationDetailSheet({
                     {g.email && <span>Email: {g.email}</span>}
                   </div>
                   <div className="text-[11px] text-muted-foreground">
-                    {g.authorizedAccess ? "Authorized emergency contact" : "Secondary / unauthorized contact"}
+                    {g.authorizedAccess
+                      ? "Authorized emergency contact"
+                      : "Secondary / unauthorized contact"}
                   </div>
                 </div>
               ))}
@@ -916,108 +1107,128 @@ function ApplicationDetailSheet({
 
           {/* Workflow Transition Actions */}
           <div className="space-y-3">
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Workflow Actions
-            </h4>
+            {(canCreate || canReview || canAdmit) && (
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Workflow Actions
+              </h4>
+            )}
 
-            {application.status === "DRAFT" && (
+            {application.status === "DRAFT" && canCreate && (
               <div className="flex flex-col gap-2">
-                <Button
-                  className="w-full justify-start gap-2"
-                  disabled={transitionMutation.isPending}
-                  onClick={() => transitionMutation.mutate("submit")}
-                >
-                  <ArrowRight className="size-4" />
-                  Submit Application
-                </Button>
-                <Button
-                  className="w-full justify-start gap-2"
-                  onClick={onEditClick}
-                  variant="outline"
-                >
-                  Edit Draft
-                </Button>
-                <Button
-                  className="w-full justify-start gap-2 text-rose-600 hover:text-rose-700"
-                  disabled={transitionMutation.isPending}
-                  onClick={() => transitionMutation.mutate("withdraw")}
-                  variant="ghost"
-                >
-                  <XCircle className="size-4" />
-                  Withdraw Application
-                </Button>
+                {canCreate && (
+                  <>
+                    <Button
+                      className="w-full justify-start gap-2"
+                      disabled={transitionMutation.isPending}
+                      onClick={() => transitionMutation.mutate("submit")}
+                    >
+                      <ArrowRight className="size-4" />
+                      Submit Application
+                    </Button>
+                    <Button
+                      className="w-full justify-start gap-2"
+                      onClick={onEditClick}
+                      variant="outline"
+                    >
+                      Edit Draft
+                    </Button>
+                    <Button
+                      className="w-full justify-start gap-2 text-rose-600 hover:text-rose-700"
+                      disabled={transitionMutation.isPending}
+                      onClick={() => transitionMutation.mutate("withdraw")}
+                      variant="ghost"
+                    >
+                      <XCircle className="size-4" />
+                      Withdraw Application
+                    </Button>
+                  </>
+                )}
               </div>
             )}
 
-            {application.status === "SUBMITTED" && (
+            {application.status === "SUBMITTED" && (canReview || canCreate) && (
               <div className="flex flex-col gap-2">
-                <Button
-                  className="w-full justify-start gap-2"
-                  disabled={transitionMutation.isPending}
-                  onClick={() => transitionMutation.mutate("review")}
-                >
-                  <Clock className="size-4" />
-                  Mark Under Review
-                </Button>
-                <Button
-                  className="w-full justify-start gap-2 text-rose-600 hover:text-rose-700"
-                  disabled={transitionMutation.isPending}
-                  onClick={() => transitionMutation.mutate("withdraw")}
-                  variant="ghost"
-                >
-                  <XCircle className="size-4" />
-                  Withdraw Application
-                </Button>
+                {canReview && (
+                  <Button
+                    className="w-full justify-start gap-2"
+                    disabled={transitionMutation.isPending}
+                    onClick={() => transitionMutation.mutate("review")}
+                  >
+                    <Clock className="size-4" />
+                    Mark Under Review
+                  </Button>
+                )}
+                {canCreate && (
+                  <Button
+                    className="w-full justify-start gap-2 text-rose-600 hover:text-rose-700"
+                    disabled={transitionMutation.isPending}
+                    onClick={() => transitionMutation.mutate("withdraw")}
+                    variant="ghost"
+                  >
+                    <XCircle className="size-4" />
+                    Withdraw Application
+                  </Button>
+                )}
               </div>
             )}
 
-            {application.status === "UNDER_REVIEW" && (
+            {application.status === "UNDER_REVIEW" && (canReview || canCreate) && (
               <div className="flex flex-col gap-2">
-                <Button
-                  className="w-full justify-start gap-2 bg-emerald-600 hover:bg-emerald-700"
-                  disabled={transitionMutation.isPending}
-                  onClick={() => transitionMutation.mutate("accept")}
-                >
-                  <CheckCircle2 className="size-4" />
-                  Accept Application
-                </Button>
-                <Button
-                  className="w-full justify-start gap-2 text-rose-600 hover:text-rose-700"
-                  disabled={transitionMutation.isPending}
-                  onClick={() => transitionMutation.mutate("reject")}
-                  variant="outline"
-                >
-                  <XCircle className="size-4" />
-                  Reject Application
-                </Button>
-                <Button
-                  className="w-full justify-start gap-2 text-muted-foreground"
-                  disabled={transitionMutation.isPending}
-                  onClick={() => transitionMutation.mutate("withdraw")}
-                  variant="ghost"
-                >
-                  Withdraw
-                </Button>
+                {canReview && (
+                  <>
+                    <Button
+                      className="w-full justify-start gap-2 bg-emerald-600 hover:bg-emerald-700"
+                      disabled={transitionMutation.isPending}
+                      onClick={() => transitionMutation.mutate("accept")}
+                    >
+                      <CheckCircle2 className="size-4" />
+                      Accept Application
+                    </Button>
+                    <Button
+                      className="w-full justify-start gap-2 text-rose-600 hover:text-rose-700"
+                      disabled={transitionMutation.isPending}
+                      onClick={() => transitionMutation.mutate("reject")}
+                      variant="outline"
+                    >
+                      <XCircle className="size-4" />
+                      Reject Application
+                    </Button>
+                  </>
+                )}
+                {canCreate && (
+                  <Button
+                    className="w-full justify-start gap-2 text-muted-foreground"
+                    disabled={transitionMutation.isPending}
+                    onClick={() => transitionMutation.mutate("withdraw")}
+                    variant="ghost"
+                  >
+                    Withdraw
+                  </Button>
+                )}
               </div>
             )}
 
-            {application.status === "ACCEPTED" && (
+            {application.status === "ACCEPTED" && (canAdmit || canCreate) && (
               <div className="flex flex-col gap-2">
-                <Button
-                  className="w-full justify-start gap-2 bg-purple-600 hover:bg-purple-700 text-white"
-                  onClick={onAdmitClick}
-                >
-                  <GraduationCap className="size-4" />
-                  Admit Student & Assign Class
-                </Button>
-                <Button
-                  className="w-full justify-start gap-2 text-rose-600 hover:text-rose-700"
-                  disabled={transitionMutation.isPending}
-                  onClick={() => transitionMutation.mutate("withdraw")}
-                  variant="ghost"
-                >
-                  Withdraw
-                </Button>
+                {canAdmit && (
+                  <Button
+                    className="w-full justify-start gap-2 bg-purple-600 hover:bg-purple-700 text-white"
+                    onClick={onAdmitClick}
+                  >
+                    <GraduationCap className="size-4" />
+                    Admit Student & Assign Class
+                  </Button>
+                )}
+                {canCreate && (
+                  <Button
+                    className="w-full justify-start gap-2 text-rose-600 hover:text-rose-700"
+                    disabled={transitionMutation.isPending}
+                    onClick={() => transitionMutation.mutate("withdraw")}
+                    variant="ghost"
+                  >
+                    Withdraw
+                  </Button>
+                )}
               </div>
             )}
 
@@ -1044,7 +1255,11 @@ function ApplicationDetailSheet({
 
             {application.status === "REJECTED" && (
               <div className="rounded-lg bg-rose-50 p-4 border border-rose-200 text-rose-800 text-xs">
-                This application was rejected on {application.rejectedAt ? new Date(application.rejectedAt).toLocaleDateString() : "review"}.
+                This application was rejected on{" "}
+                {application.rejectedAt
+                  ? new Date(application.rejectedAt).toLocaleDateString()
+                  : "review"}
+                .
               </div>
             )}
 
@@ -1083,6 +1298,7 @@ function EditDraftApplicationSheet({
 }) {
   const { school } = useAuth();
   const queryClient = useQueryClient();
+  const fieldId = useId();
 
   const [givenName, setGivenName] = useState(application.givenName);
   const [middleName, setMiddleName] = useState(application.middleName ?? "");
@@ -1114,13 +1330,10 @@ function EditDraftApplicationSheet({
         })),
       };
 
-      return apiRequest(
-        `/schools/${school.id}/admission-applications/${application.id}`,
-        {
-          method: "PATCH",
-          body: payload,
-        },
-      );
+      return apiRequest(`/schools/${school.id}/admission-applications/${application.id}`, {
+        method: "PATCH",
+        body: payload,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
@@ -1149,9 +1362,7 @@ function EditDraftApplicationSheet({
         <form onSubmit={handleSubmit} className="flex flex-col h-full">
           <SheetHeader>
             <SheetTitle>Edit Draft Application</SheetTitle>
-            <SheetDescription>
-              Update details before submitting for review.
-            </SheetDescription>
+            <SheetDescription>Update details before submitting for review.</SheetDescription>
           </SheetHeader>
 
           <div className="flex-1 space-y-4 py-6">
@@ -1163,10 +1374,14 @@ function EditDraftApplicationSheet({
             )}
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor={`${fieldId}-given`}
+              >
                 Given name <span className="text-destructive">*</span>
               </label>
               <input
+                id={`${fieldId}-given`}
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
                 onChange={(e) => setGivenName(e.target.value)}
                 required
@@ -1175,8 +1390,14 @@ function EditDraftApplicationSheet({
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Middle name</label>
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor={`${fieldId}-middle`}
+              >
+                Middle name
+              </label>
               <input
+                id={`${fieldId}-middle`}
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
                 onChange={(e) => setMiddleName(e.target.value)}
                 value={middleName}
@@ -1184,10 +1405,14 @@ function EditDraftApplicationSheet({
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor={`${fieldId}-family`}
+              >
                 Family name <span className="text-destructive">*</span>
               </label>
               <input
+                id={`${fieldId}-family`}
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
                 onChange={(e) => setFamilyName(e.target.value)}
                 required
@@ -1196,8 +1421,14 @@ function EditDraftApplicationSheet({
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Date of birth</label>
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor={`${fieldId}-dob`}
+              >
+                Date of birth
+              </label>
               <input
+                id={`${fieldId}-dob`}
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
                 onChange={(e) => setDateOfBirth(e.target.value)}
                 type="date"
@@ -1207,7 +1438,12 @@ function EditDraftApplicationSheet({
           </div>
 
           <SheetFooter className="border-t pt-4">
-            <Button disabled={editMutation.isPending} onClick={onClose} type="button" variant="outline">
+            <Button
+              disabled={editMutation.isPending}
+              onClick={onClose}
+              type="button"
+              variant="outline"
+            >
               Cancel
             </Button>
             <Button disabled={editMutation.isPending} type="submit">
@@ -1237,6 +1473,7 @@ function AdmitStudentDialog({
 }) {
   const { school } = useAuth();
   const queryClient = useQueryClient();
+  const fieldId = useId();
 
   const [academicYearId, setAcademicYearId] = useState("");
   const [classId, setClassId] = useState("");
@@ -1274,13 +1511,10 @@ function AdmitStudentDialog({
         ...(streamId ? { streamId } : {}),
       };
 
-      return apiRequest(
-        `/schools/${school.id}/admission-applications/${application.id}/admit`,
-        {
-          method: "POST",
-          body: payload,
-        },
-      );
+      return apiRequest(`/schools/${school.id}/admission-applications/${application.id}/admit`, {
+        method: "POST",
+        body: payload,
+      });
     },
     onSuccess: () => {
       // Invalidate both admissions and students lists!
@@ -1324,7 +1558,8 @@ function AdmitStudentDialog({
           <DialogHeader>
             <DialogTitle>Admit Learner</DialogTitle>
             <DialogDescription>
-              Assign <strong>{fullName}</strong> to an academic year, class, and optional stream to generate an admission number and learner profile.
+              Assign <strong>{fullName}</strong> to an academic year, class, and optional stream to
+              generate an admission number and learner profile.
             </DialogDescription>
           </DialogHeader>
 
@@ -1338,10 +1573,14 @@ function AdmitStudentDialog({
 
             {/* Academic Year */}
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor={`${fieldId}-year`}
+              >
                 Academic Year <span className="text-destructive">*</span>
               </label>
               <select
+                id={`${fieldId}-year`}
                 className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
                 onChange={(e) => {
                   setAcademicYearId(e.target.value);
@@ -1364,10 +1603,14 @@ function AdmitStudentDialog({
 
             {/* Class */}
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor={`${fieldId}-class`}
+              >
                 Class <span className="text-destructive">*</span>
               </label>
               <select
+                id={`${fieldId}-class`}
                 className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
                 disabled={!academicYearId}
                 onChange={(e) => {
@@ -1392,10 +1635,14 @@ function AdmitStudentDialog({
 
             {/* Stream */}
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor={`${fieldId}-stream`}
+              >
                 Stream / Section <span className="text-xs text-muted-foreground">(Optional)</span>
               </label>
               <select
+                id={`${fieldId}-stream`}
                 className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
                 disabled={!classId}
                 onChange={(e) => setStreamId(e.target.value)}
@@ -1420,7 +1667,12 @@ function AdmitStudentDialog({
           </div>
 
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button disabled={admitMutation.isPending} onClick={onClose} type="button" variant="outline">
+            <Button
+              disabled={admitMutation.isPending}
+              onClick={onClose}
+              type="button"
+              variant="outline"
+            >
               Cancel
             </Button>
             <Button

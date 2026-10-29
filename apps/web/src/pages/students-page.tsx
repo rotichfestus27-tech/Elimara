@@ -15,9 +15,11 @@ import { useState } from "react";
 import { Link } from "react-router";
 import { useAuth } from "@/app/auth-provider";
 import { RequestError, RequestLoading } from "@/components/api/request-state";
+import { PageHeader } from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { UnauthorizedState } from "@/components/ui/data-states";
 import {
   Dialog,
   DialogContent,
@@ -126,113 +128,147 @@ function StudentStatusBadge({ status }: { status: StudentStatus }) {
 // -----------------------------------------------------------------------------
 
 export function StudentsPage() {
-  const [activeTab, setActiveTab] = useState<"students" | "guardians">("students");
+  const { school } = useAuth();
+  const permissions = new Set(school?.permissions ?? []);
+  const canReadStudents = permissions.has("students.profile.read");
+  const canReadGuardians = permissions.has("guardians.profile.read");
+  const canManageGuardians = permissions.has("guardians.profile.manage");
+  const canAdmitStudent =
+    permissions.has("admissions.application.read") &&
+    permissions.has("admissions.application.admit");
+  const [studentPageSize, setStudentPageSize] = useState(25);
+  const [guardianPageSize, setGuardianPageSize] = useState(25);
+  const [activeTab, setActiveTab] = useState<"students" | "guardians">(
+    canReadStudents ? "students" : "guardians",
+  );
 
   // Students state
   const [studentSearch, setStudentSearch] = useState("");
   const [studentStatusFilter, setStudentStatusFilter] = useState("all");
+  const [studentOffset, setStudentOffset] = useState(0);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
 
   // Guardians state
   const [guardianSearch, setGuardianSearch] = useState("");
+  const [guardianOffset, setGuardianOffset] = useState(0);
   const [selectedGuardianId, setSelectedGuardianId] = useState<string | null>(null);
   const [isCreateGuardianOpen, setIsCreateGuardianOpen] = useState(false);
 
   // Queries
-  const students = useSchoolList<Student>("/students", {
-    limit: 50,
-    offset: 0,
-    q: studentSearch.trim() || undefined,
-    status: studentStatusFilter === "all" ? undefined : studentStatusFilter,
-    sortBy: "admissionNumber",
-    sortOrder: "asc",
-  });
+  const students = useSchoolList<Student>(
+    "/students",
+    {
+      limit: studentPageSize,
+      offset: studentOffset,
+      q: studentSearch.trim() || undefined,
+      status: studentStatusFilter === "all" ? undefined : studentStatusFilter,
+      sortBy: "admissionNumber",
+      sortOrder: "asc",
+    },
+    { enabled: canReadStudents },
+  );
 
-  const guardians = useSchoolList<GuardianRecord>("/guardians", {
-    limit: 50,
-    offset: 0,
-    q: guardianSearch.trim() || undefined,
-    sortBy: "familyName",
-    sortOrder: "asc",
-  });
+  const guardians = useSchoolList<GuardianRecord>(
+    "/guardians",
+    {
+      limit: guardianPageSize,
+      offset: guardianOffset,
+      q: guardianSearch.trim() || undefined,
+      sortBy: "familyName",
+      sortOrder: "asc",
+    },
+    { enabled: canReadGuardians },
+  );
 
   const selectedStudent = students.data?.data.find((s) => s.id === selectedStudentId);
   const selectedGuardian = guardians.data?.data.find((g) => g.id === selectedGuardianId);
 
+  if (!canReadStudents && !canReadGuardians) {
+    return (
+      <UnauthorizedState
+        description="Your school access does not include permission to read student or guardian records."
+        title="Student records access unavailable"
+      />
+    );
+  }
+
   return (
     <div className="space-y-8">
-      {/* Page Header */}
-      <section className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-        <div className="max-w-2xl space-y-2">
-          <p className="text-sm font-medium text-primary">Learner & Family Records</p>
-          <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-            Students & Guardians
-          </h2>
-          <p className="text-sm leading-6 text-muted-foreground sm:text-base">
-            Manage enrolled students, academic placements, and guardian directory relationships.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          {activeTab === "students" ? (
+      <PageHeader
+        actions={
+          activeTab === "students" && canAdmitStudent ? (
             <Button asChild className="gap-2">
               <Link to="/admissions">
                 <UserPlus className="size-4" />
                 Admit New Student
               </Link>
             </Button>
-          ) : (
+          ) : activeTab === "guardians" && canManageGuardians ? (
             <Button className="gap-2" onClick={() => setIsCreateGuardianOpen(true)}>
               <Plus className="size-4" />
               New Guardian
             </Button>
-          )}
-        </div>
-      </section>
+          ) : undefined
+        }
+        description="Manage enrolled students, academic placements, and guardian directory relationships."
+        eyebrow={<p className="text-sm font-medium text-primary">Learner & Family Records</p>}
+        title="Students & Guardians"
+      />
 
       {/* Tabs */}
       <div className="border-b">
-        <nav className="flex space-x-8" aria-label="Tabs">
-          <button
-            className={`border-b-2 py-4 px-1 text-sm font-medium transition-colors flex items-center gap-2 ${
-              activeTab === "students"
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:border-gray-300 hover:text-foreground"
-            }`}
-            onClick={() => setActiveTab("students")}
-            type="button"
-          >
-            <GraduationCap className="size-4" />
-            Students Directory
-            {!students.isPending && (
-              <span className="ml-1 rounded-full bg-muted px-2 py-0.5 text-xs">
-                {students.data?.meta.total ?? 0}
-              </span>
-            )}
-          </button>
+        <fieldset className="flex space-x-8 border-0 p-0">
+          <legend className="sr-only">Student record views</legend>
+          {canReadStudents && (
+            <button
+              aria-pressed={activeTab === "students"}
+              className={`border-b-2 py-4 px-1 text-sm font-medium transition-colors flex items-center gap-2 ${
+                activeTab === "students"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:border-gray-300 hover:text-foreground"
+              }`}
+              onClick={() => setActiveTab("students")}
+              type="button"
+            >
+              <GraduationCap className="size-4" />
+              Students Directory
+              {students.isError ? (
+                <span className="ml-1 rounded-full bg-muted px-2 py-0.5 text-xs">Unavailable</span>
+              ) : students.data ? (
+                <span className="ml-1 rounded-full bg-muted px-2 py-0.5 text-xs">
+                  {students.data.meta.total}
+                </span>
+              ) : null}
+            </button>
+          )}
 
-          <button
-            className={`border-b-2 py-4 px-1 text-sm font-medium transition-colors flex items-center gap-2 ${
-              activeTab === "guardians"
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:border-gray-300 hover:text-foreground"
-            }`}
-            onClick={() => setActiveTab("guardians")}
-            type="button"
-          >
-            <Users className="size-4" />
-            Guardians Directory
-            {!guardians.isPending && (
-              <span className="ml-1 rounded-full bg-muted px-2 py-0.5 text-xs">
-                {guardians.data?.meta.total ?? 0}
-              </span>
-            )}
-          </button>
-        </nav>
+          {canReadGuardians && (
+            <button
+              aria-pressed={activeTab === "guardians"}
+              className={`border-b-2 py-4 px-1 text-sm font-medium transition-colors flex items-center gap-2 ${
+                activeTab === "guardians"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:border-gray-300 hover:text-foreground"
+              }`}
+              onClick={() => setActiveTab("guardians")}
+              type="button"
+            >
+              <Users className="size-4" />
+              Guardians Directory
+              {guardians.isError ? (
+                <span className="ml-1 rounded-full bg-muted px-2 py-0.5 text-xs">Unavailable</span>
+              ) : guardians.data ? (
+                <span className="ml-1 rounded-full bg-muted px-2 py-0.5 text-xs">
+                  {guardians.data.meta.total}
+                </span>
+              ) : null}
+            </button>
+          )}
+        </fieldset>
       </div>
 
       {/* Tab 1: Students */}
-      {activeTab === "students" && (
+      {activeTab === "students" && canReadStudents && (
         <section aria-labelledby="student-records-heading" className="space-y-4">
           <Card className="shadow-none">
             <CardContent className="space-y-5 p-4 sm:p-5">
@@ -245,7 +281,11 @@ export function StudentsPage() {
                   />
                   <input
                     className="h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm outline-none transition-shadow placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
-                    onChange={(event) => setStudentSearch(event.target.value)}
+                    onChange={(event) => {
+                      setStudentSearch(event.target.value);
+                      setStudentOffset(0);
+                      setStudentPageSize(25);
+                    }}
                     placeholder="Name or admission number"
                     type="search"
                     value={studentSearch}
@@ -256,7 +296,11 @@ export function StudentsPage() {
                   <span className="text-xs font-medium text-muted-foreground">Student status</span>
                   <select
                     className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    onChange={(event) => setStudentStatusFilter(event.target.value)}
+                    onChange={(event) => {
+                      setStudentStatusFilter(event.target.value);
+                      setStudentOffset(0);
+                      setStudentPageSize(25);
+                    }}
                     value={studentStatusFilter}
                   >
                     <option value="all">All statuses</option>
@@ -274,41 +318,87 @@ export function StudentsPage() {
                     <caption className="sr-only">Student records</caption>
                     <thead className="bg-muted/50 text-xs text-muted-foreground">
                       <tr>
-                        <th className="px-4 py-3 font-medium" scope="col">Admission number</th>
-                        <th className="px-4 py-3 font-medium" scope="col">Student name</th>
-                        <th className="px-4 py-3 font-medium" scope="col">Date of birth</th>
-                        <th className="px-4 py-3 font-medium" scope="col">Enrolled date</th>
-                        <th className="px-4 py-3 font-medium" scope="col">Status</th>
-                        <th className="px-4 py-3 text-right font-medium" scope="col">Action</th>
+                        <th className="px-4 py-3 font-medium" scope="col">
+                          Admission number
+                        </th>
+                        <th className="px-4 py-3 font-medium" scope="col">
+                          Student name
+                        </th>
+                        <th className="px-4 py-3 font-medium" scope="col">
+                          Date of birth
+                        </th>
+                        <th className="px-4 py-3 font-medium" scope="col">
+                          Enrolled date
+                        </th>
+                        <th className="px-4 py-3 font-medium" scope="col">
+                          Status
+                        </th>
+                        <th className="px-4 py-3 text-right font-medium" scope="col">
+                          Action
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
                       {students.isPending ? (
-                        <tr><td colSpan={6}><RequestLoading /></td></tr>
+                        <tr>
+                          <td colSpan={6}>
+                            <RequestLoading />
+                          </td>
+                        </tr>
                       ) : students.isError ? (
-                        <tr><td colSpan={6}><RequestError error={students.error} /></td></tr>
+                        <tr>
+                          <td colSpan={6}>
+                            <div className="space-y-3 p-4">
+                              <RequestError error={students.error} />
+                              <Button
+                                disabled={students.isFetching}
+                                onClick={() => void students.refetch()}
+                                size="sm"
+                                type="button"
+                                variant="outline"
+                              >
+                                Retry loading students
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
                       ) : students.data.data.length === 0 ? (
                         <tr>
-                          <td className="px-4 py-12 text-center text-sm text-muted-foreground" colSpan={6}>
-                            No student records found. Learners are created when an admission application is approved and admitted.
+                          <td
+                            className="px-4 py-12 text-center text-sm text-muted-foreground"
+                            colSpan={6}
+                          >
+                            No student records found. Learners are created when an admission
+                            application is approved and admitted.
                           </td>
                         </tr>
                       ) : (
                         students.data.data.map((student) => {
-                          const fullName = [student.givenName, student.middleName, student.familyName]
+                          const fullName = [
+                            student.givenName,
+                            student.middleName,
+                            student.familyName,
+                          ]
                             .filter(Boolean)
                             .join(" ");
 
                           return (
                             <tr
-                              className="cursor-pointer border-t transition-colors hover:bg-muted/40"
+                              className="border-t transition-colors hover:bg-muted/40"
                               key={student.id}
-                              onClick={() => setSelectedStudentId(student.id)}
                             >
                               <td className="px-4 py-3 font-mono font-medium text-foreground">
                                 {student.admissionNumber}
                               </td>
-                              <td className="px-4 py-3 font-medium">{fullName}</td>
+                              <td className="px-4 py-3 font-medium">
+                                <button
+                                  className="rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                  onClick={() => setSelectedStudentId(student.id)}
+                                  type="button"
+                                >
+                                  {fullName}
+                                </button>
+                              </td>
                               <td className="px-4 py-3 text-muted-foreground">
                                 {student.dateOfBirth ? student.dateOfBirth : "—"}
                               </td>
@@ -320,10 +410,7 @@ export function StudentsPage() {
                               </td>
                               <td className="px-4 py-3 text-right">
                                 <Button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setSelectedStudentId(student.id);
-                                  }}
+                                  onClick={() => setSelectedStudentId(student.id)}
                                   size="sm"
                                   variant="ghost"
                                 >
@@ -340,9 +427,54 @@ export function StudentsPage() {
               </div>
 
               {!students.isError && !students.isPending && (
-                <p className="text-xs text-muted-foreground">
-                  Showing {students.data.data.length} of {students.data.meta.total} students.
-                </p>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p aria-live="polite" className="text-xs text-muted-foreground">
+                    Showing{" "}
+                    {students.data.meta.total === 0 ? 0 : students.data.meta.offset + 1}–
+                    {students.data.meta.offset + students.data.data.length} of{" "}
+                    {students.data.meta.total}{" "}
+                    students.
+                  </p>
+                  <nav aria-label="Student pages" className="flex items-center gap-2">
+                    <Button
+                      disabled={students.data.meta.offset === 0 || students.isFetching}
+                      onClick={() => {
+                        setStudentPageSize(students.data.meta.limit);
+                        setStudentOffset(
+                          Math.max(0, students.data.meta.offset - students.data.meta.limit),
+                        );
+                      }}
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                    >
+                      Previous
+                    </Button>
+                    <span className="text-xs text-muted-foreground">
+                      Page{" "}
+                      {Math.floor(students.data.meta.offset / students.data.meta.limit) + 1} of{" "}
+                      {Math.max(
+                        1,
+                        Math.ceil(students.data.meta.total / students.data.meta.limit),
+                      )}
+                    </span>
+                    <Button
+                      disabled={
+                        students.data.meta.offset + students.data.data.length >=
+                          students.data.meta.total || students.isFetching
+                      }
+                      onClick={() => {
+                        setStudentPageSize(students.data.meta.limit);
+                        setStudentOffset(students.data.meta.offset + students.data.meta.limit);
+                      }}
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                    >
+                      Next
+                    </Button>
+                  </nav>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -350,7 +482,7 @@ export function StudentsPage() {
       )}
 
       {/* Tab 2: Guardians Directory */}
-      {activeTab === "guardians" && (
+      {activeTab === "guardians" && canReadGuardians && (
         <section aria-labelledby="guardian-records-heading" className="space-y-4">
           <Card className="shadow-none">
             <CardContent className="space-y-5 p-4 sm:p-5">
@@ -363,7 +495,11 @@ export function StudentsPage() {
                   />
                   <input
                     className="h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm outline-none transition-shadow placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
-                    onChange={(event) => setGuardianSearch(event.target.value)}
+                    onChange={(event) => {
+                      setGuardianSearch(event.target.value);
+                      setGuardianOffset(0);
+                      setGuardianPageSize(25);
+                    }}
                     placeholder="Search by name, phone, or email"
                     type="search"
                     value={guardianSearch}
@@ -377,37 +513,80 @@ export function StudentsPage() {
                     <caption className="sr-only">Guardians directory</caption>
                     <thead className="bg-muted/50 text-xs text-muted-foreground">
                       <tr>
-                        <th className="px-4 py-3 font-medium" scope="col">Guardian name</th>
-                        <th className="px-4 py-3 font-medium" scope="col">Phone</th>
-                        <th className="px-4 py-3 font-medium" scope="col">Email</th>
-                        <th className="px-4 py-3 font-medium" scope="col">Recorded date</th>
-                        <th className="px-4 py-3 text-right font-medium" scope="col">Action</th>
+                        <th className="px-4 py-3 font-medium" scope="col">
+                          Guardian name
+                        </th>
+                        <th className="px-4 py-3 font-medium" scope="col">
+                          Phone
+                        </th>
+                        <th className="px-4 py-3 font-medium" scope="col">
+                          Email
+                        </th>
+                        <th className="px-4 py-3 font-medium" scope="col">
+                          Recorded date
+                        </th>
+                        <th className="px-4 py-3 text-right font-medium" scope="col">
+                          Action
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
                       {guardians.isPending ? (
-                        <tr><td colSpan={5}><RequestLoading /></td></tr>
+                        <tr>
+                          <td colSpan={5}>
+                            <RequestLoading />
+                          </td>
+                        </tr>
                       ) : guardians.isError ? (
-                        <tr><td colSpan={5}><RequestError error={guardians.error} /></td></tr>
+                        <tr>
+                          <td colSpan={5}>
+                            <div className="space-y-3 p-4">
+                              <RequestError error={guardians.error} />
+                              <Button
+                                disabled={guardians.isFetching}
+                                onClick={() => void guardians.refetch()}
+                                size="sm"
+                                type="button"
+                                variant="outline"
+                              >
+                                Retry loading guardians
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
                       ) : guardians.data.data.length === 0 ? (
                         <tr>
-                          <td className="px-4 py-12 text-center text-sm text-muted-foreground" colSpan={5}>
+                          <td
+                            className="px-4 py-12 text-center text-sm text-muted-foreground"
+                            colSpan={5}
+                          >
                             No guardian records found.
                           </td>
                         </tr>
                       ) : (
                         guardians.data.data.map((guardian) => {
-                          const fullName = [guardian.givenName, guardian.middleName, guardian.familyName]
+                          const fullName = [
+                            guardian.givenName,
+                            guardian.middleName,
+                            guardian.familyName,
+                          ]
                             .filter(Boolean)
                             .join(" ");
 
                           return (
                             <tr
-                              className="cursor-pointer border-t transition-colors hover:bg-muted/40"
+                              className="border-t transition-colors hover:bg-muted/40"
                               key={guardian.id}
-                              onClick={() => setSelectedGuardianId(guardian.id)}
                             >
-                              <td className="px-4 py-3 font-medium text-foreground">{fullName}</td>
+                              <td className="px-4 py-3 font-medium text-foreground">
+                                <button
+                                  className="rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                  onClick={() => setSelectedGuardianId(guardian.id)}
+                                  type="button"
+                                >
+                                  {fullName}
+                                </button>
+                              </td>
                               <td className="px-4 py-3 text-muted-foreground">
                                 {guardian.phone || "—"}
                               </td>
@@ -419,14 +598,11 @@ export function StudentsPage() {
                               </td>
                               <td className="px-4 py-3 text-right">
                                 <Button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setSelectedGuardianId(guardian.id);
-                                  }}
+                                  onClick={() => setSelectedGuardianId(guardian.id)}
                                   size="sm"
                                   variant="ghost"
                                 >
-                                  View / Edit
+                                  {canManageGuardians ? "View / Edit" : "View"}
                                 </Button>
                               </td>
                             </tr>
@@ -439,9 +615,56 @@ export function StudentsPage() {
               </div>
 
               {!guardians.isError && !guardians.isPending && (
-                <p className="text-xs text-muted-foreground">
-                  Showing {guardians.data.data.length} of {guardians.data.meta.total} guardians.
-                </p>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p aria-live="polite" className="text-xs text-muted-foreground">
+                    Showing{" "}
+                    {guardians.data.meta.total === 0 ? 0 : guardians.data.meta.offset + 1}–
+                    {guardians.data.meta.offset + guardians.data.data.length} of{" "}
+                    {guardians.data.meta.total}{" "}
+                    guardians.
+                  </p>
+                  <nav aria-label="Guardian pages" className="flex items-center gap-2">
+                    <Button
+                      disabled={guardians.data.meta.offset === 0 || guardians.isFetching}
+                      onClick={() => {
+                        setGuardianPageSize(guardians.data.meta.limit);
+                        setGuardianOffset(
+                          Math.max(0, guardians.data.meta.offset - guardians.data.meta.limit),
+                        );
+                      }}
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                    >
+                      Previous
+                    </Button>
+                    <span className="text-xs text-muted-foreground">
+                      Page{" "}
+                      {Math.floor(guardians.data.meta.offset / guardians.data.meta.limit) + 1} of{" "}
+                      {Math.max(
+                        1,
+                        Math.ceil(guardians.data.meta.total / guardians.data.meta.limit),
+                      )}
+                    </span>
+                    <Button
+                      disabled={
+                        guardians.data.meta.offset + guardians.data.data.length >=
+                          guardians.data.meta.total || guardians.isFetching
+                      }
+                      onClick={() => {
+                        setGuardianPageSize(guardians.data.meta.limit);
+                        setGuardianOffset(
+                          guardians.data.meta.offset + guardians.data.meta.limit,
+                        );
+                      }}
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                    >
+                      Next
+                    </Button>
+                  </nav>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -451,6 +674,10 @@ export function StudentsPage() {
       {/* Student Detail & Management Sheet */}
       {selectedStudent && (
         <StudentDetailSheet
+          canChangeStatus={permissions.has("students.profile.status")}
+          canManageGuardianLinks={permissions.has("students.guardian.manage")}
+          canReadGuardians={canReadGuardians}
+          canUpdateProfile={permissions.has("students.profile.update")}
           onClose={() => setSelectedStudentId(null)}
           open={Boolean(selectedStudentId)}
           student={selectedStudent}
@@ -460,6 +687,7 @@ export function StudentsPage() {
       {/* Guardian Detail & Edit Sheet */}
       {selectedGuardian && (
         <GuardianDetailSheet
+          canManage={canManageGuardians}
           guardian={selectedGuardian}
           onClose={() => setSelectedGuardianId(null)}
           open={Boolean(selectedGuardianId)}
@@ -473,7 +701,7 @@ export function StudentsPage() {
           setIsCreateGuardianOpen(false);
           setSelectedGuardianId(id);
         }}
-        open={isCreateGuardianOpen}
+        open={isCreateGuardianOpen && canManageGuardians}
       />
     </div>
   );
@@ -487,16 +715,26 @@ function StudentDetailSheet({
   student,
   open,
   onClose,
+  canUpdateProfile,
+  canChangeStatus,
+  canManageGuardianLinks,
+  canReadGuardians,
 }: {
   student: Student;
   open: boolean;
   onClose: () => void;
+  canUpdateProfile: boolean;
+  canChangeStatus: boolean;
+  canManageGuardianLinks: boolean;
+  canReadGuardians: boolean;
 }) {
   // Dialog triggers
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [isStatusDialogOpen, setIsStatusDialogOpen] = useState(false);
   const [isLinkGuardianOpen, setIsLinkGuardianOpen] = useState(false);
-  const [editingGuardianLink, setEditingGuardianLink] = useState<StudentGuardianRecord | null>(null);
+  const [editingGuardianLink, setEditingGuardianLink] = useState<StudentGuardianRecord | null>(
+    null,
+  );
 
   // Queries for related student data
   const placementsQuery = useSchoolData<StudentPlacement[]>(
@@ -508,7 +746,7 @@ function StudentDetailSheet({
   const guardiansQuery = useSchoolData<StudentGuardianRecord[]>(
     `/students/${student.id}/guardians`,
     {},
-    { enabled: open },
+    { enabled: open && canReadGuardians },
   );
 
   const historyQuery = useSchoolData<{ data: ProfileRevisionRecord[] }>(
@@ -540,16 +778,18 @@ function StudentDetailSheet({
         <div className="space-y-6 py-6">
           {/* Action Row */}
           <div className="flex flex-wrap gap-2">
-            <Button
-              className="gap-1.5"
-              onClick={() => setIsEditProfileOpen(true)}
-              size="sm"
-              variant="outline"
-            >
-              <Edit2 className="size-3.5" />
-              Edit Profile
-            </Button>
-            {student.status === "ACTIVE" && (
+            {canUpdateProfile && (
+              <Button
+                className="gap-1.5"
+                onClick={() => setIsEditProfileOpen(true)}
+                size="sm"
+                variant="outline"
+              >
+                <Edit2 className="size-3.5" />
+                Edit Profile
+              </Button>
+            )}
+            {student.status === "ACTIVE" && canChangeStatus && (
               <Button
                 className="gap-1.5 text-amber-700 hover:text-amber-800"
                 onClick={() => setIsStatusDialogOpen(true)}
@@ -594,26 +834,59 @@ function StudentDetailSheet({
             {placementsQuery.isPending ? (
               <RequestLoading />
             ) : placementsQuery.isError ? (
-              <RequestError error={placementsQuery.error} />
+              <div className="space-y-3">
+                <RequestError error={placementsQuery.error} />
+                <Button
+                  disabled={placementsQuery.isFetching}
+                  onClick={() => void placementsQuery.refetch()}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  Retry loading academic placements
+                </Button>
+              </div>
             ) : placementsQuery.data?.length === 0 ? (
               <div className="rounded-lg border p-3 text-xs text-muted-foreground">
                 No class placements recorded for this student.
               </div>
             ) : (
               <div className="space-y-2">
-                {placementsQuery.data?.map((p) => (
-                  <div key={p.id} className="rounded-lg border bg-card p-3 text-xs space-y-1">
-                    <div className="flex items-center justify-between font-medium">
-                      <span>Placement ID: {p.id.slice(0, 8)}</span>
-                      <Badge variant={p.endedAt ? "outline" : "default"}>
-                        {p.endedAt ? "Historical" : "Active Placement"}
+                {placementsQuery.data?.map((placement) => (
+                  <section
+                    key={placement.id}
+                    className="space-y-3 rounded-lg border bg-card p-3 text-sm"
+                    aria-labelledby={`placement-${placement.id}-heading`}
+                  >
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <h5 className="font-medium" id={`placement-${placement.id}-heading`}>
+                        {placement.endedAt ? "Previous placement" : "Current placement"}
+                      </h5>
+                      <Badge variant={placement.endedAt ? "outline" : "default"}>
+                        {placement.endedAt ? "Historical" : "Active"}
                       </Badge>
                     </div>
-                    <div className="text-muted-foreground">
-                      Started: {new Date(p.startedAt).toLocaleDateString()}
-                      {p.endedAt && ` • Ended: ${new Date(p.endedAt).toLocaleDateString()}`}
-                    </div>
-                  </div>
+                    <dl className="grid gap-3 text-xs sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <dt className="text-muted-foreground">Started</dt>
+                        <dd className="font-medium text-foreground">
+                          {new Date(placement.startedAt).toLocaleDateString()}
+                        </dd>
+                      </div>
+                      <div className="space-y-1">
+                        <dt className="text-muted-foreground">Ended</dt>
+                        <dd className="font-medium text-foreground">
+                          {placement.endedAt
+                            ? new Date(placement.endedAt).toLocaleDateString()
+                            : "Not ended"}
+                        </dd>
+                      </div>
+                    </dl>
+                    <p className="text-xs text-muted-foreground">
+                      Class, stream, and academic-year names are not included in this placement
+                      record.
+                    </p>
+                  </section>
                 ))}
               </div>
             )}
@@ -625,21 +898,38 @@ function StudentDetailSheet({
               <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Linked Guardians
               </h4>
-              <Button
-                className="gap-1 text-xs h-7"
-                onClick={() => setIsLinkGuardianOpen(true)}
-                size="sm"
-                variant="outline"
-              >
-                <Plus className="size-3" />
-                Link Guardian
-              </Button>
+              {canManageGuardianLinks && canReadGuardians && (
+                <Button
+                  className="gap-1 text-xs h-7"
+                  onClick={() => setIsLinkGuardianOpen(true)}
+                  size="sm"
+                  variant="outline"
+                >
+                  <Plus className="size-3" />
+                  Link Guardian
+                </Button>
+              )}
             </div>
 
-            {guardiansQuery.isPending ? (
+            {!canReadGuardians ? (
+              <p className="rounded-lg border p-3 text-xs text-muted-foreground">
+                Guardian details require guardian-profile read permission.
+              </p>
+            ) : guardiansQuery.isPending ? (
               <RequestLoading />
             ) : guardiansQuery.isError ? (
-              <RequestError error={guardiansQuery.error} />
+              <div className="space-y-3">
+                <RequestError error={guardiansQuery.error} />
+                <Button
+                  disabled={guardiansQuery.isFetching}
+                  onClick={() => void guardiansQuery.refetch()}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  Retry loading linked guardians
+                </Button>
+              </div>
             ) : guardiansQuery.data?.length === 0 ? (
               <div className="rounded-lg border p-3 text-xs text-muted-foreground">
                 No guardians linked to this student yet.
@@ -657,16 +947,20 @@ function StudentDetailSheet({
                       <div className="flex items-center justify-between">
                         <div>
                           <span className="font-medium text-foreground">{guardianName}</span>
-                          <span className="ml-2 text-xs text-muted-foreground">({item.relationship})</span>
+                          <span className="ml-2 text-xs text-muted-foreground">
+                            ({item.relationship})
+                          </span>
                         </div>
-                        <Button
-                          className="h-6 px-2 text-xs"
-                          onClick={() => setEditingGuardianLink(item)}
-                          size="sm"
-                          variant="ghost"
-                        >
-                          Edit
-                        </Button>
+                        {canManageGuardianLinks && (
+                          <Button
+                            className="h-6 px-2 text-xs"
+                            onClick={() => setEditingGuardianLink(item)}
+                            size="sm"
+                            variant="ghost"
+                          >
+                            Edit
+                          </Button>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-3 text-xs text-muted-foreground">
@@ -695,15 +989,37 @@ function StudentDetailSheet({
           </div>
 
           {/* Profile Revision Audit */}
-          {historyQuery.data?.data && historyQuery.data.data.length > 0 && (
-            <div className="space-y-3">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                <History className="size-3.5" />
-                Profile Revision History
-              </h4>
+          <div className="space-y-3">
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+              <History className="size-3.5" />
+              Profile Revision History
+            </h4>
+            {historyQuery.isPending ? (
+              <RequestLoading />
+            ) : historyQuery.isError ? (
+              <div className="space-y-3">
+                <RequestError error={historyQuery.error} />
+                <Button
+                  disabled={historyQuery.isFetching}
+                  onClick={() => void historyQuery.refetch()}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  Retry loading profile history
+                </Button>
+              </div>
+            ) : historyQuery.data.data.length === 0 ? (
+              <div className="rounded-lg border p-3 text-xs text-muted-foreground">
+                No profile revisions recorded for this student.
+              </div>
+            ) : (
               <div className="rounded-lg border bg-muted/20 p-3 space-y-2 text-xs">
                 {historyQuery.data.data.map((revision) => (
-                  <div key={revision.id} className="border-b last:border-b-0 pb-2 last:pb-0 space-y-0.5">
+                  <div
+                    key={revision.id}
+                    className="border-b last:border-b-0 pb-2 last:pb-0 space-y-0.5"
+                  >
                     <div className="text-muted-foreground">
                       Recorded on {new Date(revision.recordedAt).toLocaleString()}:
                     </div>
@@ -716,8 +1032,8 @@ function StudentDetailSheet({
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         <SheetFooter className="border-t pt-4">
@@ -729,6 +1045,7 @@ function StudentDetailSheet({
 
       {/* Edit Student Profile Modal */}
       <EditStudentProfileDialog
+        canUpdateProfile={canUpdateProfile}
         onClose={() => setIsEditProfileOpen(false)}
         onSaved={() => setIsEditProfileOpen(false)}
         open={isEditProfileOpen}
@@ -737,6 +1054,7 @@ function StudentDetailSheet({
 
       {/* Change Student Status Modal */}
       <ChangeStudentStatusDialog
+        canChangeStatus={canChangeStatus}
         onClose={() => setIsStatusDialogOpen(false)}
         onSaved={() => {
           setIsStatusDialogOpen(false);
@@ -748,6 +1066,7 @@ function StudentDetailSheet({
 
       {/* Link Guardian Modal */}
       <LinkGuardianDialog
+        canManage={canManageGuardianLinks && canReadGuardians}
         onClose={() => setIsLinkGuardianOpen(false)}
         onLinked={() => setIsLinkGuardianOpen(false)}
         open={isLinkGuardianOpen}
@@ -760,6 +1079,7 @@ function StudentDetailSheet({
           link={editingGuardianLink}
           onClose={() => setEditingGuardianLink(null)}
           onUpdated={() => setEditingGuardianLink(null)}
+          canManage={canManageGuardianLinks}
           open={Boolean(editingGuardianLink)}
           studentId={student.id}
         />
@@ -777,11 +1097,13 @@ function EditStudentProfileDialog({
   open,
   onClose,
   onSaved,
+  canUpdateProfile,
 }: {
   student: Student;
   open: boolean;
   onClose: () => void;
   onSaved: () => void;
+  canUpdateProfile: boolean;
 }) {
   const { school } = useAuth();
   const queryClient = useQueryClient();
@@ -824,6 +1146,7 @@ function EditStudentProfileDialog({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canUpdateProfile) return;
     setFormError(null);
     if (!givenName.trim() || !familyName.trim()) {
       setFormError("Given name and family name are required.");
@@ -852,11 +1175,16 @@ function EditStudentProfileDialog({
             )}
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor="student-given-name"
+              >
                 Given name <span className="text-destructive">*</span>
               </label>
               <input
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                disabled={!canUpdateProfile}
+                id="student-given-name"
                 onChange={(e) => setGivenName(e.target.value)}
                 required
                 value={givenName}
@@ -864,20 +1192,32 @@ function EditStudentProfileDialog({
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Middle name</label>
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor="student-middle-name"
+              >
+                Middle name
+              </label>
               <input
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                disabled={!canUpdateProfile}
+                id="student-middle-name"
                 onChange={(e) => setMiddleName(e.target.value)}
                 value={middleName}
               />
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor="student-family-name"
+              >
                 Family name <span className="text-destructive">*</span>
               </label>
               <input
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                disabled={!canUpdateProfile}
+                id="student-family-name"
                 onChange={(e) => setFamilyName(e.target.value)}
                 required
                 value={familyName}
@@ -885,9 +1225,16 @@ function EditStudentProfileDialog({
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Date of birth</label>
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor="student-date-of-birth"
+              >
+                Date of birth
+              </label>
               <input
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                disabled={!canUpdateProfile}
+                id="student-date-of-birth"
                 onChange={(e) => setDateOfBirth(e.target.value)}
                 type="date"
                 value={dateOfBirth}
@@ -896,12 +1243,19 @@ function EditStudentProfileDialog({
           </div>
 
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button disabled={editMutation.isPending} onClick={onClose} type="button" variant="outline">
+            <Button
+              disabled={editMutation.isPending}
+              onClick={onClose}
+              type="button"
+              variant="outline"
+            >
               Cancel
             </Button>
-            <Button disabled={editMutation.isPending} type="submit">
-              {editMutation.isPending ? "Saving..." : "Save Profile"}
-            </Button>
+            {canUpdateProfile && (
+              <Button disabled={editMutation.isPending} type="submit">
+                {editMutation.isPending ? "Saving..." : "Save Profile"}
+              </Button>
+            )}
           </DialogFooter>
         </form>
       </DialogContent>
@@ -918,16 +1272,20 @@ function ChangeStudentStatusDialog({
   open,
   onClose,
   onSaved,
+  canChangeStatus,
 }: {
   student: Student;
   open: boolean;
   onClose: () => void;
   onSaved: () => void;
+  canChangeStatus: boolean;
 }) {
   const { school } = useAuth();
   const queryClient = useQueryClient();
 
-  const [newStatus, setNewStatus] = useState<"TRANSFERRED" | "GRADUATED" | "WITHDRAWN">("TRANSFERRED");
+  const [newStatus, setNewStatus] = useState<"TRANSFERRED" | "GRADUATED" | "WITHDRAWN">(
+    "TRANSFERRED",
+  );
   const [formError, setFormError] = useState<string | null>(null);
 
   const statusMutation = useMutation({
@@ -951,6 +1309,7 @@ function ChangeStudentStatusDialog({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canChangeStatus) return;
     setFormError(null);
     statusMutation.mutate();
   };
@@ -962,7 +1321,8 @@ function ChangeStudentStatusDialog({
           <DialogHeader>
             <DialogTitle>Update Student Status</DialogTitle>
             <DialogDescription>
-              Marking a student as Transferred, Graduated, or Withdrawn transitions them out of active enrollment.
+              Marking a student as Transferred, Graduated, or Withdrawn transitions them out of
+              active enrollment.
             </DialogDescription>
           </DialogHeader>
 
@@ -975,9 +1335,16 @@ function ChangeStudentStatusDialog({
             )}
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Select New Status</label>
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor="student-new-status"
+              >
+                Select New Status
+              </label>
               <select
                 className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                disabled={!canChangeStatus}
+                id="student-new-status"
                 onChange={(e) =>
                   setNewStatus(e.target.value as "TRANSFERRED" | "GRADUATED" | "WITHDRAWN")
                 }
@@ -990,21 +1357,29 @@ function ChangeStudentStatusDialog({
             </div>
 
             <div className="rounded-md bg-amber-50 p-3 text-xs text-amber-900 border border-amber-200">
-              <strong>Notice:</strong> This status change is permanent and will prevent further active attendance and exam registrations for this student.
+              <strong>Notice:</strong> This status change is permanent and will prevent further
+              active attendance and exam registrations for this student.
             </div>
           </div>
 
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button disabled={statusMutation.isPending} onClick={onClose} type="button" variant="outline">
+            <Button
+              disabled={statusMutation.isPending}
+              onClick={onClose}
+              type="button"
+              variant="outline"
+            >
               Cancel
             </Button>
-            <Button
-              className="bg-destructive text-destructive-foreground hover:opacity-90"
-              disabled={statusMutation.isPending}
-              type="submit"
-            >
-              {statusMutation.isPending ? "Updating..." : "Confirm Status Change"}
-            </Button>
+            {canChangeStatus && (
+              <Button
+                className="bg-destructive text-destructive-foreground hover:opacity-90"
+                disabled={statusMutation.isPending}
+                type="submit"
+              >
+                {statusMutation.isPending ? "Updating..." : "Confirm Status Change"}
+              </Button>
+            )}
           </DialogFooter>
         </form>
       </DialogContent>
@@ -1021,11 +1396,13 @@ function LinkGuardianDialog({
   open,
   onClose,
   onLinked,
+  canManage,
 }: {
   studentId: string;
   open: boolean;
   onClose: () => void;
   onLinked: () => void;
+  canManage: boolean;
 }) {
   const { school } = useAuth();
   const queryClient = useQueryClient();
@@ -1036,7 +1413,11 @@ function LinkGuardianDialog({
   const [formError, setFormError] = useState<string | null>(null);
 
   // Load guardians directory for selection
-  const guardiansQuery = useSchoolList<GuardianRecord>("/guardians", { limit: 100 }, { enabled: open });
+  const guardiansQuery = useSchoolList<GuardianRecord>(
+    "/guardians",
+    { limit: 100 },
+    { enabled: open && canManage },
+  );
 
   const linkMutation = useMutation({
     mutationFn: async () => {
@@ -1063,6 +1444,7 @@ function LinkGuardianDialog({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canManage) return;
     setFormError(null);
     if (!guardianId) {
       setFormError("Please select a guardian from the directory.");
@@ -1095,11 +1477,16 @@ function LinkGuardianDialog({
             )}
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor="link-guardian-id"
+              >
                 Guardian <span className="text-destructive">*</span>
               </label>
               <select
                 className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                disabled={!canManage}
+                id="link-guardian-id"
                 onChange={(e) => setGuardianId(e.target.value)}
                 required
                 value={guardianId}
@@ -1114,11 +1501,16 @@ function LinkGuardianDialog({
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor="link-guardian-relationship"
+              >
                 Relationship <span className="text-destructive">*</span>
               </label>
               <select
                 className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                disabled={!canManage}
+                id="link-guardian-relationship"
                 onChange={(e) => setRelationship(e.target.value)}
                 value={relationship}
               >
@@ -1136,6 +1528,7 @@ function LinkGuardianDialog({
               <input
                 checked={authorizedAccess}
                 className="size-4 rounded border-gray-300 text-primary focus:ring-primary"
+                disabled={!canManage}
                 onChange={(e) => setAuthorizedAccess(e.target.checked)}
                 type="checkbox"
               />
@@ -1146,12 +1539,19 @@ function LinkGuardianDialog({
           </div>
 
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button disabled={linkMutation.isPending} onClick={onClose} type="button" variant="outline">
+            <Button
+              disabled={linkMutation.isPending}
+              onClick={onClose}
+              type="button"
+              variant="outline"
+            >
               Cancel
             </Button>
-            <Button disabled={linkMutation.isPending} type="submit">
-              {linkMutation.isPending ? "Linking..." : "Link Guardian"}
-            </Button>
+            {canManage && (
+              <Button disabled={linkMutation.isPending} type="submit">
+                {linkMutation.isPending ? "Linking..." : "Link Guardian"}
+              </Button>
+            )}
           </DialogFooter>
         </form>
       </DialogContent>
@@ -1169,12 +1569,14 @@ function UpdateStudentGuardianDialog({
   open,
   onClose,
   onUpdated,
+  canManage,
 }: {
   studentId: string;
   link: StudentGuardianRecord;
   open: boolean;
   onClose: () => void;
   onUpdated: () => void;
+  canManage: boolean;
 }) {
   const { school } = useAuth();
   const queryClient = useQueryClient();
@@ -1210,6 +1612,7 @@ function UpdateStudentGuardianDialog({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canManage) return;
     setFormError(null);
     if (!relationship.trim()) {
       setFormError("Relationship is required.");
@@ -1218,7 +1621,9 @@ function UpdateStudentGuardianDialog({
     updateMutation.mutate();
   };
 
-  const guardianName = [link.guardian.givenName, link.guardian.familyName].filter(Boolean).join(" ");
+  const guardianName = [link.guardian.givenName, link.guardian.familyName]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <Dialog onOpenChange={(next) => !next && onClose()} open={open}>
@@ -1240,9 +1645,16 @@ function UpdateStudentGuardianDialog({
             )}
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Relationship</label>
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor="update-guardian-relationship"
+              >
+                Relationship
+              </label>
               <select
                 className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                disabled={!canManage}
+                id="update-guardian-relationship"
                 onChange={(e) => setRelationship(e.target.value)}
                 value={relationship}
               >
@@ -1260,6 +1672,7 @@ function UpdateStudentGuardianDialog({
               <input
                 checked={authorizedAccess}
                 className="size-4 rounded border-gray-300 text-primary focus:ring-primary"
+                disabled={!canManage}
                 onChange={(e) => setAuthorizedAccess(e.target.checked)}
                 type="checkbox"
               />
@@ -1270,12 +1683,19 @@ function UpdateStudentGuardianDialog({
           </div>
 
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button disabled={updateMutation.isPending} onClick={onClose} type="button" variant="outline">
+            <Button
+              disabled={updateMutation.isPending}
+              onClick={onClose}
+              type="button"
+              variant="outline"
+            >
               Cancel
             </Button>
-            <Button disabled={updateMutation.isPending} type="submit">
-              {updateMutation.isPending ? "Saving..." : "Save Changes"}
-            </Button>
+            {canManage && (
+              <Button disabled={updateMutation.isPending} type="submit">
+                {updateMutation.isPending ? "Saving..." : "Save Changes"}
+              </Button>
+            )}
           </DialogFooter>
         </form>
       </DialogContent>
@@ -1291,10 +1711,12 @@ function GuardianDetailSheet({
   guardian,
   open,
   onClose,
+  canManage,
 }: {
   guardian: GuardianRecord;
   open: boolean;
   onClose: () => void;
+  canManage: boolean;
 }) {
   const { school } = useAuth();
   const queryClient = useQueryClient();
@@ -1346,6 +1768,7 @@ function GuardianDetailSheet({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canManage) return;
     setFormError(null);
 
     if (!givenName.trim() || !familyName.trim()) {
@@ -1371,11 +1794,18 @@ function GuardianDetailSheet({
           <SheetHeader>
             <SheetTitle>{fullName || "Guardian Profile"}</SheetTitle>
             <SheetDescription>
-              View and edit guardian contact records and profile audit history.
+              {canManage
+                ? "View and edit guardian contact records and profile audit history."
+                : "View guardian contact records and profile audit history."}
             </SheetDescription>
           </SheetHeader>
 
           <div className="flex-1 space-y-4 py-6">
+            {!canManage && (
+              <p className="text-sm text-muted-foreground" role="status">
+                Read-only: guardian profile management permission is required to make changes.
+              </p>
+            )}
             {formError && (
               <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive flex items-center gap-2">
                 <AlertCircle className="size-4 shrink-0" />
@@ -1384,11 +1814,16 @@ function GuardianDetailSheet({
             )}
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor="guardian-profile-given-name"
+              >
                 Given name <span className="text-destructive">*</span>
               </label>
               <input
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                disabled={!canManage}
+                id="guardian-profile-given-name"
                 onChange={(e) => setGivenName(e.target.value)}
                 required
                 value={givenName}
@@ -1396,20 +1831,32 @@ function GuardianDetailSheet({
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Middle name</label>
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor="guardian-profile-middle-name"
+              >
+                Middle name
+              </label>
               <input
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                disabled={!canManage}
+                id="guardian-profile-middle-name"
                 onChange={(e) => setMiddleName(e.target.value)}
                 value={middleName}
               />
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor="guardian-profile-family-name"
+              >
                 Family name <span className="text-destructive">*</span>
               </label>
               <input
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                disabled={!canManage}
+                id="guardian-profile-family-name"
                 onChange={(e) => setFamilyName(e.target.value)}
                 required
                 value={familyName}
@@ -1417,9 +1864,16 @@ function GuardianDetailSheet({
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Phone number</label>
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor="guardian-profile-phone"
+              >
+                Phone number
+              </label>
               <input
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                disabled={!canManage}
+                id="guardian-profile-phone"
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="+254700000000"
                 value={phone}
@@ -1427,9 +1881,16 @@ function GuardianDetailSheet({
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Email address</label>
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor="guardian-profile-email"
+              >
+                Email address
+              </label>
               <input
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                disabled={!canManage}
+                id="guardian-profile-email"
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="guardian@example.com"
                 type="email"
@@ -1437,13 +1898,31 @@ function GuardianDetailSheet({
               />
             </div>
 
-            {/* Profile Revisions */}
-            {historyQuery.data?.data && historyQuery.data.data.length > 0 && (
-              <div className="space-y-2 pt-4">
-                <h5 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                  <History className="size-3.5" />
-                  Profile Revisions History
-                </h5>
+            <div className="space-y-2 pt-4">
+              <h5 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <History className="size-3.5" />
+                Profile Revisions History
+              </h5>
+              {historyQuery.isPending ? (
+                <RequestLoading />
+              ) : historyQuery.isError ? (
+                <div className="space-y-3">
+                  <RequestError error={historyQuery.error} />
+                  <Button
+                    disabled={historyQuery.isFetching}
+                    onClick={() => void historyQuery.refetch()}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
+                    Retry loading guardian history
+                  </Button>
+                </div>
+              ) : historyQuery.data.data.length === 0 ? (
+                <div className="rounded-lg border p-3 text-xs text-muted-foreground">
+                  No profile revisions recorded for this guardian.
+                </div>
+              ) : (
                 <div className="rounded-lg border bg-muted/20 p-3 space-y-2 text-xs">
                   {historyQuery.data.data.map((revision) => (
                     <div key={revision.id} className="border-b last:border-b-0 pb-1.5 last:pb-0">
@@ -1460,17 +1939,24 @@ function GuardianDetailSheet({
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
           <SheetFooter className="border-t pt-4">
-            <Button disabled={updateMutation.isPending} onClick={onClose} type="button" variant="outline">
+            <Button
+              disabled={updateMutation.isPending}
+              onClick={onClose}
+              type="button"
+              variant="outline"
+            >
               Cancel
             </Button>
-            <Button disabled={updateMutation.isPending} type="submit">
-              {updateMutation.isPending ? "Saving..." : "Save Changes"}
-            </Button>
+            {canManage && (
+              <Button disabled={updateMutation.isPending} type="submit">
+                {updateMutation.isPending ? "Saving..." : "Save Changes"}
+              </Button>
+            )}
           </SheetFooter>
         </form>
       </SheetContent>
@@ -1522,13 +2008,10 @@ function CreateGuardianSheet({
         phone: phone.trim() || null,
       };
 
-      const res = await apiRequest<{ data: GuardianRecord }>(
-        `/schools/${school.id}/guardians`,
-        {
-          method: "POST",
-          body: payload,
-        },
-      );
+      const res = await apiRequest<{ data: GuardianRecord }>(`/schools/${school.id}/guardians`, {
+        method: "POST",
+        body: payload,
+      });
       return res.data;
     },
     onSuccess: (data) => {
@@ -1573,25 +2056,31 @@ function CreateGuardianSheet({
         <form onSubmit={handleSubmit} className="flex flex-col h-full">
           <SheetHeader>
             <SheetTitle>New Guardian</SheetTitle>
-            <SheetDescription>
-              Add a parent or guardian to the school directory.
-            </SheetDescription>
+            <SheetDescription>Add a parent or guardian to the school directory.</SheetDescription>
           </SheetHeader>
 
           <div className="flex-1 space-y-4 py-6">
             {formError && (
-              <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive flex items-center gap-2">
+              <div
+                aria-live="assertive"
+                className="rounded-md bg-destructive/10 p-3 text-sm text-destructive flex items-center gap-2"
+                role="alert"
+              >
                 <AlertCircle className="size-4 shrink-0" />
                 <span>{formError}</span>
               </div>
             )}
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor="new-guardian-given-name"
+              >
                 Given name <span className="text-destructive">*</span>
               </label>
               <input
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                id="new-guardian-given-name"
                 onChange={(e) => setGivenName(e.target.value)}
                 placeholder="e.g. Grace"
                 required
@@ -1600,9 +2089,15 @@ function CreateGuardianSheet({
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Middle name</label>
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor="new-guardian-middle-name"
+              >
+                Middle name
+              </label>
               <input
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                id="new-guardian-middle-name"
                 onChange={(e) => setMiddleName(e.target.value)}
                 placeholder="Optional"
                 value={middleName}
@@ -1610,11 +2105,15 @@ function CreateGuardianSheet({
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor="new-guardian-family-name"
+              >
                 Family name <span className="text-destructive">*</span>
               </label>
               <input
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                id="new-guardian-family-name"
                 onChange={(e) => setFamilyName(e.target.value)}
                 placeholder="e.g. Otieno"
                 required
@@ -1623,9 +2122,15 @@ function CreateGuardianSheet({
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Phone number</label>
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor="new-guardian-phone"
+              >
+                Phone number
+              </label>
               <input
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                id="new-guardian-phone"
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="e.g. +254700000000"
                 value={phone}
@@ -1633,9 +2138,15 @@ function CreateGuardianSheet({
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Email address</label>
+              <label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor="new-guardian-email"
+              >
+                Email address
+              </label>
               <input
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                id="new-guardian-email"
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="e.g. grace@example.com"
                 type="email"
@@ -1648,7 +2159,12 @@ function CreateGuardianSheet({
           </div>
 
           <SheetFooter className="border-t pt-4">
-            <Button disabled={createMutation.isPending} onClick={onClose} type="button" variant="outline">
+            <Button
+              disabled={createMutation.isPending}
+              onClick={onClose}
+              type="button"
+              variant="outline"
+            >
               Cancel
             </Button>
             <Button disabled={createMutation.isPending} type="submit">

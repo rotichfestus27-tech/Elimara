@@ -8,110 +8,100 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 
-export type AcademicSection = "classes" | "programmes" | "subjects" | "years";
+export type AcademicSection = "classes" | "terms" | "subjects" | "years";
 
 type AcademicField = {
   name: string;
   label: string;
   type?: "text" | "date" | "select";
-  options?: string[];
   placeholder?: string;
+  required?: boolean;
+  maxLength?: number;
+  unavailable?: boolean;
 };
 
 const formFields: Record<AcademicSection, AcademicField[]> = {
   classes: [
-    { name: "className", label: "Class name", placeholder: "Enter class name" },
-    { name: "classCode", label: "Class code", placeholder: "Enter class code" },
     {
-      name: "programme",
-      label: "Programme",
-      type: "select",
-      options: [],
-      placeholder: "Programme options unavailable",
-    },
-    {
-      name: "academicYear",
+      name: "academicYearId",
       label: "Academic year",
       type: "select",
-      options: [],
       placeholder: "Academic year options unavailable",
+      required: true,
+      unavailable: true,
     },
     {
-      name: "status",
-      label: "Status",
-      type: "select",
-      options: ["Active", "Inactive"],
-      placeholder: "Select status",
+      name: "name",
+      label: "Class name",
+      placeholder: "Enter class name",
+      required: true,
+      maxLength: 100,
     },
   ],
-  programmes: [
+  terms: [
     {
-      name: "programmeName",
-      label: "Programme name",
-      placeholder: "Enter programme name",
-    },
-    {
-      name: "programmeCode",
-      label: "Programme code",
-      placeholder: "Enter programme code",
-    },
-    {
-      name: "qualification",
-      label: "Qualification / level",
-      placeholder: "Enter qualification or level",
-    },
-    { name: "duration", label: "Duration", placeholder: "Enter duration" },
-    {
-      name: "status",
-      label: "Status",
+      name: "academicYearId",
+      label: "Academic year",
       type: "select",
-      options: ["Active", "Inactive"],
-      placeholder: "Select status",
+      placeholder: "Academic year options unavailable",
+      required: true,
+      unavailable: true,
+    },
+    {
+      name: "name",
+      label: "Term name",
+      placeholder: "Enter term name",
+      required: true,
+      maxLength: 100,
+    },
+    {
+      name: "startsOn",
+      label: "Start date",
+      type: "date",
+      required: true,
+    },
+    {
+      name: "endsOn",
+      label: "End date",
+      type: "date",
+      required: true,
     },
   ],
   subjects: [
     {
-      name: "subjectName",
+      name: "name",
       label: "Subject name",
       placeholder: "Enter subject name",
-    },
-    {
-      name: "subjectCode",
-      label: "Subject code",
-      placeholder: "Enter subject code",
-    },
-    {
-      name: "classOrProgramme",
-      label: "Class / programme",
-      type: "select",
-      options: [],
-      placeholder: "Class and programme options unavailable",
-    },
-    {
-      name: "status",
-      label: "Status",
-      type: "select",
-      options: ["Active", "Inactive"],
-      placeholder: "Select status",
+      required: true,
+      maxLength: 120,
     },
   ],
   years: [
-    { name: "yearName", label: "Academic year name", placeholder: "Enter year name" },
-    { name: "startDate", label: "Start date", type: "date" },
-    { name: "endDate", label: "End date", type: "date" },
     {
-      name: "status",
-      label: "Status",
-      type: "select",
-      options: ["Upcoming", "Active", "Completed"],
-      placeholder: "Select status",
+      name: "name",
+      label: "Academic year name",
+      placeholder: "Enter academic year name",
+      required: true,
+      maxLength: 100,
+    },
+    {
+      name: "startsOn",
+      label: "Start date",
+      type: "date",
+      required: true,
+    },
+    {
+      name: "endsOn",
+      label: "End date",
+      type: "date",
+      required: true,
     },
   ],
 };
 
 const sectionTitles: Record<AcademicSection, string> = {
   classes: "Class",
-  programmes: "Programme",
+  terms: "Term",
   subjects: "Subject",
   years: "Academic year",
 };
@@ -131,7 +121,7 @@ export function AcademicItemSheet({ section }: AcademicItemSheetProps) {
       <SheetTrigger asChild>
         <Button>
           <Plus aria-hidden="true" />
-          Add Academic Item
+          {title} form preview
         </Button>
       </SheetTrigger>
       <SheetContent
@@ -140,9 +130,11 @@ export function AcademicItemSheet({ section }: AcademicItemSheetProps) {
         side="right"
       >
         <div className="space-y-1 pr-8">
-          <SheetTitle>Add {title}</SheetTitle>
+          <SheetTitle>{title} form preview</SheetTitle>
           <SheetDescription id="academic-item-form-description">
-            Presentational preview only. Academic records are not saved.
+            This form follows the documented field shape for review only.
+            Nothing is saved while the API contract and access grants remain
+            unapproved.
           </SheetDescription>
         </div>
 
@@ -158,32 +150,42 @@ export function AcademicItemSheet({ section }: AcademicItemSheetProps) {
                   htmlFor={`academic-${field.name}`}
                 >
                   {field.label}
+                  {field.required ? " *" : ""}
                 </label>
                 {field.type === "select" ? (
                   <select
+                    aria-describedby={
+                      field.unavailable
+                        ? "academic-year-context-unavailable"
+                        : undefined
+                    }
                     className={controlClassName}
-                    defaultValue=""
-                    disabled={!field.options?.length}
+                    disabled={field.unavailable}
                     id={`academic-${field.name}`}
                     name={field.name}
+                    required={field.required}
+                    value=""
                   >
-                    <option disabled value="">
-                      {field.placeholder}
-                    </option>
-                    {field.options?.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
+                    <option value="">{field.placeholder}</option>
                   </select>
                 ) : (
                   <input
                     className={controlClassName}
                     id={`academic-${field.name}`}
+                    maxLength={field.maxLength}
                     name={field.name}
                     placeholder={field.placeholder}
+                    required={field.required}
                     type={field.type ?? "text"}
                   />
+                )}
+                {field.unavailable && (
+                  <p
+                    className="text-xs text-muted-foreground"
+                    id="academic-year-context-unavailable"
+                  >
+                    Academic-year choices require an approved data connection.
+                  </p>
                 )}
               </div>
             ))}
@@ -198,12 +200,13 @@ export function AcademicItemSheet({ section }: AcademicItemSheetProps) {
               className="mt-0.5 size-4 shrink-0 text-muted-foreground"
             />
             <p className="text-xs leading-5 text-muted-foreground">
-              This form is a UI preview. Saving and validation against school
-              records are not connected.
+              No academic records are created by this preview. Academic
+              configuration access requires an approved contract and
+              server-side permission grant.
             </p>
           </div>
           <Button className="w-full" disabled type="submit" variant="secondary">
-            Save unavailable in preview
+            Save unavailable pending approval
           </Button>
         </form>
       </SheetContent>

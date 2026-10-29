@@ -16,18 +16,10 @@ const statusStyles: Record<AttendanceStatus, string> = {
     "border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-200",
 };
 
-export function AttendanceStatusBadge({
-  status,
-}: AttendanceStatusBadgeProps) {
+export function AttendanceStatusBadge({ status }: AttendanceStatusBadgeProps) {
   return (
-    <Badge
-      className={`normal-case tracking-normal ${statusStyles[status]}`}
-      variant="outline"
-    >
-      <span
-        aria-hidden="true"
-        className="mr-1.5 size-1.5 rounded-full bg-current"
-      />
+    <Badge className={`normal-case tracking-normal ${statusStyles[status]}`} variant="outline">
+      <span aria-hidden="true" className="mr-1.5 size-1.5 rounded-full bg-current" />
       {status}
     </Badge>
   );

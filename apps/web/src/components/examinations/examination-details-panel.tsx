@@ -1,7 +1,7 @@
 import { ClipboardList } from "lucide-react";
 import {
-  ExaminationStatusBadge,
   type ExaminationStatus,
+  ExaminationStatusBadge,
 } from "@/components/examinations/examination-status-badge";
 import {
   Card,

@@ -1,24 +1,17 @@
 import { BookOpenCheck } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  AcademicStatusBadge,
   type AcademicStatus,
+  AcademicStatusBadge,
 } from "@/components/academics/academic-status-badge";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export type AcademicItemDetails = {
   name: string;
-  code?: string;
-  programmeOrClass?: string;
-  qualificationOrLevel?: string;
-  duration?: string;
-  startDate?: string;
-  endDate?: string;
+  academicYearId?: string;
+  classId?: string;
+  startsOn?: string;
+  endsOn?: string;
   status: AcademicStatus;
 };
 
@@ -26,9 +19,7 @@ type AcademicItemDetailsProps = {
   item: AcademicItemDetails | null;
 };
 
-export function AcademicItemDetailsPanel({
-  item,
-}: AcademicItemDetailsProps) {
+export function AcademicItemDetailsPanel({ item }: AcademicItemDetailsProps) {
   return (
     <Card className="shadow-none">
       <CardHeader className="flex-row items-start justify-between gap-4">
@@ -46,19 +37,15 @@ export function AcademicItemDetailsPanel({
             {Object.entries(item)
               .filter(([key]) => key !== "status")
               .map(([key, value]) => (
-              <div key={key} className="space-y-1">
-                <dt className="text-xs font-medium capitalize text-muted-foreground">
-                  {key.replace(/([A-Z])/g, " $1")}
-                </dt>
-                <dd className="text-sm font-medium text-foreground">
-                  {value || "—"}
-                </dd>
-              </div>
+                <div key={key} className="space-y-1">
+                  <dt className="text-xs font-medium capitalize text-muted-foreground">
+                    {key.replace(/([A-Z])/g, " $1")}
+                  </dt>
+                  <dd className="text-sm font-medium text-foreground">{value || "—"}</dd>
+                </div>
               ))}
             <div className="space-y-1">
-              <dt className="text-xs font-medium text-muted-foreground">
-                Status
-              </dt>
+              <dt className="text-xs font-medium text-muted-foreground">Status</dt>
               <dd>
                 <AcademicStatusBadge status={item.status} />
               </dd>

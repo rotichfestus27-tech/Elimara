@@ -16,6 +16,7 @@ import { RequestError, RequestLoading } from "@/components/api/request-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { UnauthorizedState } from "@/components/ui/data-states";
 import {
   Dialog,
   DialogContent,
@@ -155,6 +156,14 @@ export type TimetableLessonRecord = {
 export function TimetablePage() {
   const { school } = useAuth();
   const queryClient = useQueryClient();
+  const permissions = new Set(school?.permissions ?? []);
+  const canReadTimetable = permissions.has("timetable.read");
+  const canReadConfiguration = permissions.has("academics.configuration.read");
+  const canReadStaff = permissions.has("staff.profile.read");
+  const canManageTimetable = permissions.has("timetable.manage");
+  const canPublishTimetable = permissions.has("timetable.publish");
+  const canReadAcademicContext = canReadTimetable && canReadConfiguration;
+  const canManageLessons = canManageTimetable && canReadConfiguration && canReadStaff;
 
   const [activeTab, setActiveTab] = useState<"grid" | "periods-rooms" | "availability">("grid");
 
@@ -189,7 +198,7 @@ export function TimetablePage() {
   const yearsQuery = useSchoolList<AcademicYearRecord>("/academic-years", {
     limit: 100,
     status: "ACTIVE",
-  });
+  }, { enabled: canReadAcademicContext });
   const years = yearsQuery.data?.data ?? [];
   const currentYearId = selectedYearId || years[0]?.id || "";
 
@@ -197,7 +206,7 @@ export function TimetablePage() {
   const timetablesQuery = useSchoolData<{ data: TimetableRecord[] }>(
     `/academic-years/${encodeURIComponent(currentYearId)}/timetables`,
     {},
-    { enabled: Boolean(currentYearId) },
+    { enabled: canReadAcademicContext && Boolean(currentYearId) },
   );
   const timetables = timetablesQuery.data?.data ?? [];
   const currentTimetable =
@@ -205,11 +214,17 @@ export function TimetablePage() {
   const currentTimetableId = currentTimetable?.id || "";
 
   // Periods
-  const periodsQuery = useSchoolData<{ data: TimetablePeriodRecord[] }>("/timetable-periods");
+  const periodsQuery = useSchoolData<{ data: TimetablePeriodRecord[] }>(
+    "/timetable-periods",
+    {},
+    { enabled: canReadTimetable },
+  );
   const periods = (periodsQuery.data?.data ?? []).slice().sort((a, b) => a.position - b.position);
 
   // Rooms
-  const roomsQuery = useSchoolData<{ data: SchoolRoomRecord[] }>("/rooms");
+  const roomsQuery = useSchoolData<{ data: SchoolRoomRecord[] }>("/rooms", {}, {
+    enabled: canReadTimetable,
+  });
   const rooms = (roomsQuery.data?.data ?? []).slice().sort((a, b) => a.name.localeCompare(b.name));
 
   // Staff Profiles
@@ -217,7 +232,7 @@ export function TimetablePage() {
     limit: 100,
     status: "ACTIVE",
     sortBy: "givenName",
-  });
+  }, { enabled: canReadTimetable && canReadStaff });
   const staffList = staffQuery.data?.data ?? [];
 
   // Academic Classes (filtered by current active year)
@@ -225,35 +240,35 @@ export function TimetablePage() {
     limit: 100,
     academicYearId: currentYearId || undefined,
     status: "ACTIVE",
-  });
+  }, { enabled: canReadAcademicContext });
   const classes = classesQuery.data?.data ?? [];
 
   // Streams (all active streams)
   const streamsQuery = useSchoolList<ClassStreamRecord>("/streams", {
     limit: 100,
     status: "ACTIVE",
-  });
+  }, { enabled: canReadAcademicContext });
   const streams = streamsQuery.data?.data ?? [];
 
   // Subjects (all active subjects)
   const subjectsQuery = useSchoolList<SubjectRecord>("/subjects", {
     limit: 100,
     status: "ACTIVE",
-  });
+  }, { enabled: canReadAcademicContext });
   const subjects = subjectsQuery.data?.data ?? [];
 
   // Class-Subject Assignments
   const classSubjectsQuery = useSchoolList<ClassSubjectRecord>("/class-subjects", {
     limit: 200,
     status: "ACTIVE",
-  });
+  }, { enabled: canReadAcademicContext });
   const classSubjects = classSubjectsQuery.data?.data ?? [];
 
   // Lessons for current timetable
   const lessonsQuery = useSchoolData<{ data: TimetableLessonRecord[] }>(
     `/timetables/${encodeURIComponent(currentTimetableId)}/lessons`,
     {},
-    { enabled: Boolean(currentTimetableId) },
+    { enabled: canReadAcademicContext && Boolean(currentTimetableId) },
   );
   const lessons = lessonsQuery.data?.data ?? [];
 
@@ -261,7 +276,9 @@ export function TimetablePage() {
   const availabilityQuery = useSchoolData<{ data: StaffAvailabilityRecord[] }>(
     `/staff/${encodeURIComponent(selectedStaffForAvailability)}/availability`,
     {},
-    { enabled: Boolean(selectedStaffForAvailability) },
+    {
+      enabled: canReadTimetable && canReadStaff && Boolean(selectedStaffForAvailability),
+    },
   );
   const availabilityWindows = availabilityQuery.data?.data ?? [];
 
@@ -317,6 +334,15 @@ export function TimetablePage() {
     return true;
   });
 
+  if (!canReadTimetable) {
+    return (
+      <UnauthorizedState
+        description="The server-returned school permissions do not include timetable read access."
+        title="Timetable access unavailable"
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header & Page Title */}
@@ -333,40 +359,43 @@ export function TimetablePage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {activeTab === "grid" && currentTimetable && (
-            <>
-              {currentTimetable.status === "DRAFT" ? (
+            currentTimetable.status === "DRAFT" ? (
                 <>
-                  <Button
-                    onClick={() => {
-                      setEditingLesson(null);
-                      setDefaultSlot(null);
-                      setIsLessonModalOpen(true);
-                    }}
-                    size="sm"
-                  >
-                    <Plus className="mr-1.5 h-4 w-4" /> Schedule Lesson
-                  </Button>
-                  <Button
-                    disabled={publishMutation.isPending || lessons.length === 0}
-                    onClick={() => {
-                      if (
-                        confirm(
-                          "Are you sure you want to publish this timetable? Published timetables become the active operational schedule.",
-                        )
-                      ) {
-                        publishMutation.mutate({
-                          timetableId: currentTimetable.id,
-                          publish: true,
-                        });
-                      }
-                    }}
-                    size="sm"
-                    variant="default"
-                  >
-                    <Lock className="mr-1.5 h-4 w-4" /> Publish Timetable
-                  </Button>
+                  {canManageLessons && (
+                    <Button
+                      onClick={() => {
+                        setEditingLesson(null);
+                        setDefaultSlot(null);
+                        setIsLessonModalOpen(true);
+                      }}
+                      size="sm"
+                    >
+                      <Plus className="mr-1.5 h-4 w-4" /> Schedule Lesson
+                    </Button>
+                  )}
+                  {canPublishTimetable && (
+                    <Button
+                      disabled={publishMutation.isPending || lessons.length === 0}
+                      onClick={() => {
+                        if (
+                          confirm(
+                            "Are you sure you want to publish this timetable? Published timetables become the active operational schedule.",
+                          )
+                        ) {
+                          publishMutation.mutate({
+                            timetableId: currentTimetable.id,
+                            publish: true,
+                          });
+                        }
+                      }}
+                      size="sm"
+                      variant="default"
+                    >
+                      <Lock className="mr-1.5 h-4 w-4" /> Publish Timetable
+                    </Button>
+                  )}
                 </>
-              ) : (
+              ) : canPublishTimetable ? (
                 <Button
                   disabled={publishMutation.isPending}
                   onClick={() => {
@@ -386,10 +415,9 @@ export function TimetablePage() {
                 >
                   <Unlock className="mr-1.5 h-4 w-4" /> Unpublish to Edit
                 </Button>
-              )}
-            </>
+              ) : null
           )}
-          {activeTab === "periods-rooms" && (
+          {activeTab === "periods-rooms" && canManageTimetable && (
             <div className="flex gap-2">
               <Button onClick={() => setIsAddPeriodOpen(true)} size="sm">
                 <Plus className="mr-1.5 h-4 w-4" /> Add Period
@@ -399,7 +427,7 @@ export function TimetablePage() {
               </Button>
             </div>
           )}
-          {activeTab === "availability" && (
+          {activeTab === "availability" && canManageTimetable && canReadStaff && (
             <Button
               disabled={!selectedStaffForAvailability}
               onClick={() => setIsAddAvailabilityOpen(true)}
@@ -456,7 +484,13 @@ export function TimetablePage() {
       {/* ===================================================================== */}
       {/* TAB 1: WEEKLY MASTER TIMETABLE                                        */}
       {/* ===================================================================== */}
-      {activeTab === "grid" && (
+      {activeTab === "grid" && !canReadConfiguration && (
+        <UnauthorizedState
+          description="Academic configuration read access is required to select the year, classes, and subjects used by the timetable."
+          title="Timetable context unavailable"
+        />
+      )}
+      {activeTab === "grid" && canReadConfiguration && (
         <div className="space-y-4">
           {/* Timetable Selection & Status Banner */}
           <Card className="shadow-none">
@@ -469,6 +503,7 @@ export function TimetablePage() {
                     onChange={(e) => {
                       setSelectedYearId(e.target.value);
                       setSelectedTimetableId("");
+                      setFilterClassId("all");
                     }}
                     value={currentYearId}
                   >
@@ -552,6 +587,7 @@ export function TimetablePage() {
                 <div className="flex flex-wrap items-center gap-3 border-t pt-3 text-xs">
                   <span className="font-medium text-muted-foreground">Filter Grid:</span>
                   <select
+                    aria-label="Filter timetable by class"
                     className="h-8 rounded-md border border-input bg-background px-2 text-xs"
                     onChange={(e) => setFilterClassId(e.target.value)}
                     value={filterClassId}
@@ -564,6 +600,7 @@ export function TimetablePage() {
                     ))}
                   </select>
                   <select
+                    aria-label="Filter timetable by teacher"
                     className="h-8 rounded-md border border-input bg-background px-2 text-xs"
                     onChange={(e) => setFilterStaffId(e.target.value)}
                     value={filterStaffId}
@@ -576,6 +613,7 @@ export function TimetablePage() {
                     ))}
                   </select>
                   <select
+                    aria-label="Filter timetable by room"
                     className="h-8 rounded-md border border-input bg-background px-2 text-xs"
                     onChange={(e) => setFilterRoomId(e.target.value)}
                     value={filterRoomId}
@@ -611,7 +649,25 @@ export function TimetablePage() {
           </Card>
 
           {/* Interactive Timetable Grid */}
-          {!currentTimetableId ? (
+          {yearsQuery.isPending ? (
+            <RequestLoading />
+          ) : yearsQuery.isError ? (
+            <QueryRetryState
+              error={yearsQuery.error}
+              isFetching={yearsQuery.isFetching}
+              onRetry={() => void yearsQuery.refetch()}
+              retryLabel="Retry loading academic years"
+            />
+          ) : timetablesQuery.isPending ? (
+            <RequestLoading />
+          ) : timetablesQuery.isError ? (
+            <QueryRetryState
+              error={timetablesQuery.error}
+              isFetching={timetablesQuery.isFetching}
+              onRetry={() => void timetablesQuery.refetch()}
+              retryLabel="Retry loading timetables"
+            />
+          ) : !currentTimetableId ? (
             <Card className="shadow-none">
               <CardContent className="flex flex-col items-center justify-center p-12 text-center text-muted-foreground">
                 <Calendar className="mb-2 h-10 w-10 text-muted-foreground/60" />
@@ -619,21 +675,34 @@ export function TimetablePage() {
                 <p className="mt-1 text-sm">
                   Create a new timetable for this academic year to start planning weekly lessons.
                 </p>
-                <Button
-                  className="mt-4"
-                  onClick={() => setIsCreateTimetableOpen(true)}
-                  size="sm"
-                  variant="outline"
-                >
-                  <Plus className="mr-1.5 h-4 w-4" /> Create Timetable
-                </Button>
+                {canManageTimetable && (
+                  <Button
+                    className="mt-4"
+                    onClick={() => setIsCreateTimetableOpen(true)}
+                    size="sm"
+                    variant="outline"
+                  >
+                    <Plus className="mr-1.5 h-4 w-4" /> Create Timetable
+                  </Button>
+                )}
               </CardContent>
             </Card>
+          ) : periodsQuery.isPending ? (
+            <RequestLoading />
+          ) : periodsQuery.isError ? (
+            <QueryRetryState
+              error={periodsQuery.error}
+              isFetching={periodsQuery.isFetching}
+              onRetry={() => void periodsQuery.refetch()}
+              retryLabel="Retry loading timetable periods"
+            />
           ) : periods.length === 0 ? (
             <Card className="shadow-none">
               <CardContent className="flex flex-col items-center justify-center p-12 text-center text-muted-foreground">
                 <Clock className="mb-2 h-10 w-10 text-muted-foreground/60" />
-                <p className="text-base font-medium text-foreground">No Timetable Periods Defined</p>
+                <p className="text-base font-medium text-foreground">
+                  No Timetable Periods Defined
+                </p>
                 <p className="mt-1 text-sm">
                   You need to configure the periods and lesson times before building a timetable
                   grid.
@@ -648,6 +717,15 @@ export function TimetablePage() {
                 </Button>
               </CardContent>
             </Card>
+          ) : lessonsQuery.isPending ? (
+            <RequestLoading />
+          ) : lessonsQuery.isError ? (
+            <QueryRetryState
+              error={lessonsQuery.error}
+              isFetching={lessonsQuery.isFetching}
+              onRetry={() => void lessonsQuery.refetch()}
+              retryLabel="Retry loading timetable lessons"
+            />
           ) : (
             <Card className="overflow-hidden shadow-none">
               <div className="overflow-x-auto">
@@ -695,8 +773,7 @@ export function TimetablePage() {
                                     lesson.classSubjectAssignmentId,
                                   );
                                   const subjectName = assignment?.subjectName ?? "Subject";
-                                  const className =
-                                    classMap.get(lesson.classId) ?? "Unknown Class";
+                                  const className = classMap.get(lesson.classId) ?? "Unknown Class";
                                   const streamName = lesson.streamId
                                     ? streamMap.get(lesson.streamId)
                                     : null;
@@ -714,7 +791,7 @@ export function TimetablePage() {
                                         <div className="font-semibold text-foreground">
                                           {subjectName}
                                         </div>
-                                        {currentTimetable.status === "DRAFT" && (
+                                        {currentTimetable.status === "DRAFT" && canManageLessons && (
                                           <button
                                             className="opacity-0 transition-opacity group-hover:opacity-100 hover:text-primary"
                                             onClick={() => {
@@ -756,22 +833,24 @@ export function TimetablePage() {
                                   );
                                 })}
 
-                                {currentTimetable.status === "DRAFT" && slotLessons.length === 0 && (
-                                  <button
-                                    className="flex h-12 w-full items-center justify-center rounded border border-dashed border-muted-foreground/20 text-xs text-muted-foreground/50 transition-all hover:border-primary hover:bg-primary/5 hover:text-primary"
-                                    onClick={() => {
-                                      setEditingLesson(null);
-                                      setDefaultSlot({
-                                        weekday: day.key,
-                                        periodId: period.id,
-                                      });
-                                      setIsLessonModalOpen(true);
-                                    }}
-                                    type="button"
-                                  >
-                                    <Plus className="h-3.5 w-3.5" />
-                                  </button>
-                                )}
+                                {currentTimetable.status === "DRAFT" &&
+                                  canManageLessons &&
+                                  slotLessons.length === 0 && (
+                                    <button
+                                      className="flex h-12 w-full items-center justify-center rounded border border-dashed border-muted-foreground/20 text-xs text-muted-foreground/50 transition-all hover:border-primary hover:bg-primary/5 hover:text-primary"
+                                      onClick={() => {
+                                        setEditingLesson(null);
+                                        setDefaultSlot({
+                                          weekday: day.key,
+                                          periodId: period.id,
+                                        });
+                                        setIsLessonModalOpen(true);
+                                      }}
+                                      type="button"
+                                    >
+                                      <Plus className="h-3.5 w-3.5" />
+                                    </button>
+                                  )}
                               </div>
                             </td>
                           );
@@ -800,41 +879,63 @@ export function TimetablePage() {
                   Configured daily lesson time slots and order.
                 </p>
               </div>
-              <Button onClick={() => setIsAddPeriodOpen(true)} size="sm">
-                <Plus className="mr-1 h-3.5 w-3.5" /> Add Period
-              </Button>
+              {canManageTimetable && (
+                <Button onClick={() => setIsAddPeriodOpen(true)} size="sm">
+                  <Plus className="mr-1 h-3.5 w-3.5" /> Add Period
+                </Button>
+              )}
             </CardHeader>
             <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-left text-sm">
-                  <thead className="bg-muted/40 text-xs text-muted-foreground">
-                    <tr>
-                      <th className="px-4 py-2.5 font-medium">Order</th>
-                      <th className="px-4 py-2.5 font-medium">Period Name</th>
-                      <th className="px-4 py-2.5 font-medium">Start Time</th>
-                      <th className="px-4 py-2.5 font-medium">End Time</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {periods.length === 0 ? (
+              {periodsQuery.isPending ? (
+                <RequestLoading />
+              ) : periodsQuery.isError ? (
+                <QueryRetryState
+                  error={periodsQuery.error}
+                  isFetching={periodsQuery.isFetching}
+                  onRetry={() => void periodsQuery.refetch()}
+                  retryLabel="Retry loading timetable periods"
+                />
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-left text-sm">
+                    <thead className="bg-muted/40 text-xs text-muted-foreground">
                       <tr>
-                        <td className="px-4 py-8 text-center text-xs text-muted-foreground" colSpan={4}>
-                          No periods defined yet. Add the daily class periods.
-                        </td>
+                        <th className="px-4 py-2.5 font-medium">Order</th>
+                        <th className="px-4 py-2.5 font-medium">Period Name</th>
+                        <th className="px-4 py-2.5 font-medium">Start Time</th>
+                        <th className="px-4 py-2.5 font-medium">End Time</th>
                       </tr>
-                    ) : (
-                      periods.map((p) => (
-                        <tr className="hover:bg-muted/20" key={p.id}>
-                          <td className="px-4 py-2.5 text-xs font-semibold">{p.position}</td>
-                          <td className="px-4 py-2.5 text-xs font-medium text-foreground">{p.name}</td>
-                          <td className="px-4 py-2.5 text-xs text-muted-foreground">{p.startsAt}</td>
-                          <td className="px-4 py-2.5 text-xs text-muted-foreground">{p.endsAt}</td>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {periods.length === 0 ? (
+                        <tr>
+                          <td
+                            className="px-4 py-8 text-center text-xs text-muted-foreground"
+                            colSpan={4}
+                          >
+                            No periods defined yet. Add the daily class periods.
+                          </td>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                      ) : (
+                        periods.map((p) => (
+                          <tr className="hover:bg-muted/20" key={p.id}>
+                            <td className="px-4 py-2.5 text-xs font-semibold">{p.position}</td>
+                            <td className="px-4 py-2.5 text-xs font-medium text-foreground">
+                              {p.name}
+                            </td>
+                            <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                              {p.startsAt}
+                            </td>
+                            <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                              {p.endsAt}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -847,45 +948,63 @@ export function TimetablePage() {
                   Classrooms, science laboratories, and facilities.
                 </p>
               </div>
-              <Button onClick={() => setIsAddRoomOpen(true)} size="sm" variant="outline">
-                <Plus className="mr-1 h-3.5 w-3.5" /> Add Room
-              </Button>
+              {canManageTimetable && (
+                <Button onClick={() => setIsAddRoomOpen(true)} size="sm" variant="outline">
+                  <Plus className="mr-1 h-3.5 w-3.5" /> Add Room
+                </Button>
+              )}
             </CardHeader>
             <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-left text-sm">
-                  <thead className="bg-muted/40 text-xs text-muted-foreground">
-                    <tr>
-                      <th className="px-4 py-2.5 font-medium">Room Name</th>
-                      <th className="px-4 py-2.5 font-medium">Capacity</th>
-                      <th className="px-4 py-2.5 font-medium">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {rooms.length === 0 ? (
+              {roomsQuery.isPending ? (
+                <RequestLoading />
+              ) : roomsQuery.isError ? (
+                <QueryRetryState
+                  error={roomsQuery.error}
+                  isFetching={roomsQuery.isFetching}
+                  onRetry={() => void roomsQuery.refetch()}
+                  retryLabel="Retry loading rooms"
+                />
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-left text-sm">
+                    <thead className="bg-muted/40 text-xs text-muted-foreground">
                       <tr>
-                        <td className="px-4 py-8 text-center text-xs text-muted-foreground" colSpan={3}>
-                          No rooms configured yet. Add classrooms and facilities.
-                        </td>
+                        <th className="px-4 py-2.5 font-medium">Room Name</th>
+                        <th className="px-4 py-2.5 font-medium">Capacity</th>
+                        <th className="px-4 py-2.5 font-medium">Status</th>
                       </tr>
-                    ) : (
-                      rooms.map((r) => (
-                        <tr className="hover:bg-muted/20" key={r.id}>
-                          <td className="px-4 py-2.5 text-xs font-medium text-foreground">{r.name}</td>
-                          <td className="px-4 py-2.5 text-xs text-muted-foreground">
-                            {r.capacity} seats
-                          </td>
-                          <td className="px-4 py-2.5 text-xs">
-                            <Badge variant={r.status === "ACTIVE" ? "default" : "secondary"}>
-                              {r.status.toLowerCase()}
-                            </Badge>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {rooms.length === 0 ? (
+                        <tr>
+                          <td
+                            className="px-4 py-8 text-center text-xs text-muted-foreground"
+                            colSpan={3}
+                          >
+                            No rooms configured yet. Add classrooms and facilities.
                           </td>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                      ) : (
+                        rooms.map((r) => (
+                          <tr className="hover:bg-muted/20" key={r.id}>
+                            <td className="px-4 py-2.5 text-xs font-medium text-foreground">
+                              {r.name}
+                            </td>
+                            <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                              {r.capacity} seats
+                            </td>
+                            <td className="px-4 py-2.5 text-xs">
+                              <Badge variant={r.status === "ACTIVE" ? "default" : "secondary"}>
+                                {r.status.toLowerCase()}
+                              </Badge>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -903,6 +1022,7 @@ export function TimetablePage() {
                   Select Staff Member to View / Configure Availability
                 </span>
                 <select
+                  aria-label="Select staff member for availability"
                   className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                   onChange={(e) => setSelectedStaffForAvailability(e.target.value)}
                   value={selectedStaffForAvailability}
@@ -922,13 +1042,22 @@ export function TimetablePage() {
                     <h3 className="text-sm font-semibold text-foreground">
                       Weekly Availability Windows
                     </h3>
-                    <Button onClick={() => setIsAddAvailabilityOpen(true)} size="sm">
-                      <Plus className="mr-1 h-3.5 w-3.5" /> Add Window
-                    </Button>
+                    {canManageTimetable && canReadStaff && (
+                      <Button onClick={() => setIsAddAvailabilityOpen(true)} size="sm">
+                        <Plus className="mr-1 h-3.5 w-3.5" /> Add Window
+                      </Button>
+                    )}
                   </div>
 
                   {availabilityQuery.isPending ? (
                     <RequestLoading />
+                  ) : availabilityQuery.isError ? (
+                    <QueryRetryState
+                      error={availabilityQuery.error}
+                      isFetching={availabilityQuery.isFetching}
+                      onRetry={() => void availabilityQuery.refetch()}
+                      retryLabel="Retry loading staff availability"
+                    />
                   ) : availabilityWindows.length === 0 ? (
                     <div className="rounded-md border border-dashed p-6 text-center text-xs text-muted-foreground">
                       <p className="font-medium text-foreground">No Availability Restrictions</p>
@@ -970,7 +1099,7 @@ export function TimetablePage() {
       {/* ===================================================================== */}
       {/* MODAL: CREATE TIMETABLE                                               */}
       {/* ===================================================================== */}
-      {isCreateTimetableOpen && (
+      {isCreateTimetableOpen && canManageTimetable && (
         <CreateTimetableDialog
           academicYearId={currentYearId}
           onClose={() => setIsCreateTimetableOpen(false)}
@@ -985,7 +1114,7 @@ export function TimetablePage() {
       {/* ===================================================================== */}
       {/* MODAL: ADD / EDIT LESSON                                              */}
       {/* ===================================================================== */}
-      {isLessonModalOpen && currentTimetable && (
+      {isLessonModalOpen && canManageLessons && currentTimetable && (
         <LessonDialog
           classes={classes}
           classSubjectMap={classSubjectMap}
@@ -1009,7 +1138,7 @@ export function TimetablePage() {
       {/* ===================================================================== */}
       {/* MODAL: ADD PERIOD                                                     */}
       {/* ===================================================================== */}
-      {isAddPeriodOpen && (
+      {isAddPeriodOpen && canManageTimetable && (
         <AddPeriodDialog
           existingCount={periods.length}
           onClose={() => setIsAddPeriodOpen(false)}
@@ -1020,20 +1149,41 @@ export function TimetablePage() {
       {/* ===================================================================== */}
       {/* MODAL: ADD ROOM                                                       */}
       {/* ===================================================================== */}
-      {isAddRoomOpen && (
+      {isAddRoomOpen && canManageTimetable && (
         <AddRoomDialog onClose={() => setIsAddRoomOpen(false)} schoolId={school?.id ?? ""} />
       )}
 
       {/* ===================================================================== */}
       {/* MODAL: ADD AVAILABILITY                                               */}
       {/* ===================================================================== */}
-      {isAddAvailabilityOpen && selectedStaffForAvailability && (
+      {isAddAvailabilityOpen && canManageTimetable && canReadStaff && selectedStaffForAvailability && (
         <AddAvailabilityDialog
           onClose={() => setIsAddAvailabilityOpen(false)}
           schoolId={school?.id ?? ""}
           staffId={selectedStaffForAvailability}
         />
       )}
+    </div>
+  );
+}
+
+function QueryRetryState({
+  error,
+  isFetching,
+  onRetry,
+  retryLabel,
+}: {
+  error: Error;
+  isFetching: boolean;
+  onRetry: () => void;
+  retryLabel: string;
+}) {
+  return (
+    <div className="space-y-3">
+      <RequestError error={error} />
+      <Button disabled={isFetching} onClick={onRetry} size="sm" type="button" variant="outline">
+        {retryLabel}
+      </Button>
     </div>
   );
 }
@@ -1089,9 +1239,7 @@ function CreateTimetableDialog({
             if (name.trim()) createMutation.mutate();
           }}
         >
-          {createMutation.isError && (
-            <RequestError error={createMutation.error} />
-          )}
+          {createMutation.isError && <RequestError error={createMutation.error} />}
           <label className="block space-y-1 text-sm" htmlFor={nameId}>
             <span className="font-medium">Timetable Name</span>
             <input
@@ -1154,9 +1302,7 @@ function LessonDialog({
   const [classSubjectAssignmentId, setClassSubjectAssignmentId] = useState<string>(
     existingLesson?.classSubjectAssignmentId ?? "",
   );
-  const [staffId, setStaffId] = useState<string>(
-    existingLesson?.staffId ?? staffList[0]?.id ?? "",
-  );
+  const [staffId, setStaffId] = useState<string>(existingLesson?.staffId ?? staffList[0]?.id ?? "");
   const [roomId, setRoomId] = useState<string>(existingLesson?.roomId ?? "");
   const [startPeriodId, setStartPeriodId] = useState<string>(
     existingLesson?.startPeriodId ?? defaultSlot?.periodId ?? periods[0]?.id ?? "",
@@ -1219,7 +1365,9 @@ function LessonDialog({
     <Dialog onOpenChange={(open) => !open && onClose()} open>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>{existingLesson ? "Edit Scheduled Lesson" : "Schedule New Lesson"}</DialogTitle>
+          <DialogTitle>
+            {existingLesson ? "Edit Scheduled Lesson" : "Schedule New Lesson"}
+          </DialogTitle>
           <DialogDescription>
             Assign a subject offering, eligible teacher, class stream, and room to weekly timetable
             periods.
@@ -1233,9 +1381,7 @@ function LessonDialog({
             saveMutation.mutate();
           }}
         >
-          {saveMutation.isError && (
-            <RequestError error={saveMutation.error} />
-          )}
+          {saveMutation.isError && <RequestError error={saveMutation.error} />}
 
           <div className="grid grid-cols-2 gap-3">
             <label className="space-y-1 text-sm" htmlFor={weekdayId}>
@@ -1396,7 +1542,11 @@ function LessonDialog({
               disabled={saveMutation.isPending || !activeAssignmentId || !staffId}
               type="submit"
             >
-              {saveMutation.isPending ? "Saving..." : existingLesson ? "Update Lesson" : "Save Lesson"}
+              {saveMutation.isPending
+                ? "Saving..."
+                : existingLesson
+                  ? "Update Lesson"
+                  : "Save Lesson"}
             </Button>
           </DialogFooter>
         </form>
@@ -1460,9 +1610,7 @@ function AddPeriodDialog({
             addMutation.mutate();
           }}
         >
-          {addMutation.isError && (
-            <RequestError error={addMutation.error} />
-          )}
+          {addMutation.isError && <RequestError error={addMutation.error} />}
 
           <div className="grid grid-cols-2 gap-3">
             <label className="space-y-1 text-sm" htmlFor={nameId}>
@@ -1576,9 +1724,7 @@ function AddRoomDialog({ schoolId, onClose }: { schoolId: string; onClose: () =>
             addMutation.mutate();
           }}
         >
-          {addMutation.isError && (
-            <RequestError error={addMutation.error} />
-          )}
+          {addMutation.isError && <RequestError error={addMutation.error} />}
 
           <label className="block space-y-1 text-sm" htmlFor={nameId}>
             <span className="text-xs font-medium text-muted-foreground">Room Name</span>
@@ -1671,9 +1817,7 @@ function AddAvailabilityDialog({
             addMutation.mutate();
           }}
         >
-          {addMutation.isError && (
-            <RequestError error={addMutation.error} />
-          )}
+          {addMutation.isError && <RequestError error={addMutation.error} />}
 
           <label className="block space-y-1 text-sm" htmlFor={weekdayId}>
             <span className="text-xs font-medium text-muted-foreground">Day of Week</span>

@@ -1,10 +1,5 @@
 import type { ReactNode } from "react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 type SettingsSectionProps = {
   id: string;
@@ -14,13 +9,7 @@ type SettingsSectionProps = {
   children: ReactNode;
 };
 
-export function SettingsSection({
-  id,
-  title,
-  description,
-  icon,
-  children,
-}: SettingsSectionProps) {
+export function SettingsSection({ id, title, description, icon, children }: SettingsSectionProps) {
   return (
     <section aria-labelledby={`${id}-heading`} className="scroll-mt-24">
       <Card className="shadow-none">
@@ -32,14 +21,10 @@ export function SettingsSection({
             <CardTitle id={`${id}-heading`} className="text-base">
               {title}
             </CardTitle>
-            <p className="mt-1.5 text-sm leading-5 text-muted-foreground">
-              {description}
-            </p>
+            <p className="mt-1.5 text-sm leading-5 text-muted-foreground">{description}</p>
           </div>
         </CardHeader>
-        <CardContent className="px-4 pb-5 sm:px-6 sm:pb-6">
-          {children}
-        </CardContent>
+        <CardContent className="px-4 pb-5 sm:px-6 sm:pb-6">{children}</CardContent>
       </Card>
     </section>
   );

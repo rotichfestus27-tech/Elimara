@@ -27,7 +27,7 @@ export function useSchoolData<T>(
 
   return useQuery({
     queryKey: ["school-data", school?.id, path, queryString],
-    queryFn: () => apiRequest<T>(url),
+    queryFn: ({ signal }) => apiRequest<T>(url, { signal }),
     enabled: Boolean(school) && (options.enabled ?? true),
   });
 }

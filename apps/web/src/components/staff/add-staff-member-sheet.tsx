@@ -1,4 +1,5 @@
 import { Info, UserRoundPlus } from "lucide-react";
+import { FormField } from "@/components/students/form-field";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -7,7 +8,6 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { FormField } from "@/components/students/form-field";
 
 const inputClassName =
   "h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring";
@@ -18,7 +18,7 @@ export function AddStaffMemberSheet() {
       <SheetTrigger asChild>
         <Button>
           <UserRoundPlus aria-hidden="true" />
-          Add Staff Member
+          Staff form preview
         </Button>
       </SheetTrigger>
       <SheetContent
@@ -27,153 +27,108 @@ export function AddStaffMemberSheet() {
         side="right"
       >
         <div className="space-y-1 pr-8">
-          <SheetTitle>Add staff member</SheetTitle>
+          <SheetTitle>Staff profile form preview</SheetTitle>
           <SheetDescription id="staff-form-description">
-            Staff profile preview only. Staff records cannot yet be saved.
+            This preview follows the proposed staff profile fields. Nothing is saved while contract
+            approval and integration are pending.
           </SheetDescription>
         </div>
 
-        <form
-          className="mt-7 space-y-6"
-          onSubmit={(event) => event.preventDefault()}
-        >
+        <form className="mt-7 space-y-6" onSubmit={(event) => event.preventDefault()}>
           <p className="text-xs text-muted-foreground">
-            Fields marked with <span className="text-destructive">*</span> are
-            required in a future connected workflow.
+            Required fields in the proposal are marked with{" "}
+            <span className="text-destructive">*</span>.
           </p>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <FormField id="staff-first-name" label="First name *">
-              <input
-                autoComplete="given-name"
-                className={inputClassName}
-                id="staff-first-name"
-                name="firstName"
-                placeholder="Enter first name"
-                required
-              />
-            </FormField>
-            <FormField id="staff-last-name" label="Last name *">
-              <input
-                autoComplete="family-name"
-                className={inputClassName}
-                id="staff-last-name"
-                name="lastName"
-                placeholder="Enter last name"
-                required
-              />
-            </FormField>
-            <FormField id="staff-id" label="Staff ID *">
+            <FormField id="staff-number" label="Staff number *">
               <input
                 autoComplete="off"
                 className={inputClassName}
-                id="staff-id"
-                name="staffId"
-                placeholder="Enter staff ID"
+                id="staff-number"
+                maxLength={80}
+                name="staffNumber"
+                placeholder="Enter staff number"
                 required
               />
             </FormField>
-            <FormField id="staff-email" label="Email">
+            <FormField id="staff-given-name" label="Given name *">
+              <input
+                autoComplete="given-name"
+                className={inputClassName}
+                id="staff-given-name"
+                maxLength={100}
+                name="givenName"
+                placeholder="Enter given name"
+                required
+              />
+            </FormField>
+            <FormField id="staff-middle-name" label="Middle name">
+              <input
+                autoComplete="off"
+                className={inputClassName}
+                id="staff-middle-name"
+                maxLength={100}
+                name="middleName"
+                placeholder="Enter middle name"
+              />
+            </FormField>
+            <FormField id="staff-family-name" label="Family name *">
+              <input
+                autoComplete="family-name"
+                className={inputClassName}
+                id="staff-family-name"
+                maxLength={100}
+                name="familyName"
+                placeholder="Enter family name"
+                required
+              />
+            </FormField>
+            <FormField id="staff-position-title" label="Position title *">
+              <input
+                autoComplete="organization-title"
+                className={inputClassName}
+                id="staff-position-title"
+                maxLength={120}
+                name="positionTitle"
+                placeholder="Enter position title"
+                required
+              />
+            </FormField>
+            <FormField id="staff-contact-email" label="Contact email">
               <input
                 autoComplete="email"
                 className={inputClassName}
-                id="staff-email"
-                name="email"
+                id="staff-contact-email"
+                maxLength={320}
+                name="contactEmail"
                 placeholder="name@example.com"
                 type="email"
               />
             </FormField>
-            <FormField id="staff-phone" label="Phone number">
+            <FormField id="staff-contact-phone" label="Contact phone">
               <input
                 autoComplete="tel"
                 className={inputClassName}
-                id="staff-phone"
-                name="phone"
-                placeholder="Enter phone number"
+                id="staff-contact-phone"
+                maxLength={40}
+                minLength={7}
+                name="contactPhone"
+                placeholder="Enter contact phone"
                 type="tel"
-              />
-            </FormField>
-            <FormField id="staff-department" label="Department *">
-              <input
-                autoComplete="organization-title"
-                className={inputClassName}
-                id="staff-department"
-                name="department"
-                placeholder="Enter department"
-                required
-              />
-            </FormField>
-            <FormField id="staff-position" label="Position *">
-              <input
-                autoComplete="off"
-                className={inputClassName}
-                id="staff-position"
-                name="position"
-                placeholder="Enter position"
-                required
-              />
-            </FormField>
-            <FormField id="staff-category" label="Staff category *">
-              <select
-                className={inputClassName}
-                defaultValue=""
-                id="staff-category"
-                name="category"
-                required
-              >
-                <option disabled value="">
-                  Select a category
-                </option>
-                <option value="teaching">Teaching</option>
-                <option value="non-teaching">Non-Teaching</option>
-              </select>
-            </FormField>
-            <FormField
-              id="staff-employment-status"
-              label="Employment status *"
-            >
-              <select
-                className={inputClassName}
-                defaultValue=""
-                id="staff-employment-status"
-                name="employmentStatus"
-                required
-              >
-                <option disabled value="">
-                  Select a status
-                </option>
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-                <option value="on-leave">On leave</option>
-                <option value="terminated">Terminated</option>
-              </select>
-            </FormField>
-            <FormField id="staff-date-hired" label="Date hired *">
-              <input
-                className={inputClassName}
-                id="staff-date-hired"
-                name="dateHired"
-                required
-                type="date"
               />
             </FormField>
           </div>
 
-          <div
-            className="flex gap-3 rounded-lg border bg-muted/30 p-3.5"
-            role="note"
-          >
-            <Info
-              aria-hidden="true"
-              className="mt-0.5 size-4 shrink-0 text-muted-foreground"
-            />
+          <div className="flex gap-3 rounded-lg border bg-muted/30 p-3.5" role="note">
+            <Info aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
             <p className="text-xs leading-5 text-muted-foreground">
-              This form does not save staff records or create user accounts,
-              credentials, or permissions.
+              Staff profiles are separate from user accounts. This preview does not create a
+              profile, account, credentials, or permissions.
             </p>
           </div>
           <Button className="w-full" disabled type="submit" variant="secondary">
-            Save unavailable in preview
+            Saving unavailable pending contract approval
           </Button>
         </form>
       </SheetContent>

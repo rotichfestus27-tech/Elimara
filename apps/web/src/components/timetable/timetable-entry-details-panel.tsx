@@ -1,10 +1,5 @@
 import { CalendarClock } from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export type TimetableEntryDetails = {
   classOrProgramme: string;
@@ -35,28 +30,20 @@ const detailLabels: Array<{
   { key: "notes", label: "Notes" },
 ];
 
-export function TimetableEntryDetailsPanel({
-  entry,
-}: TimetableEntryDetailsPanelProps) {
+export function TimetableEntryDetailsPanel({ entry }: TimetableEntryDetailsPanelProps) {
   return (
     <Card className="shadow-none">
       <CardHeader>
         <CardTitle className="text-base">Timetable entry details</CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Timetable information is not connected.
-        </p>
+        <p className="text-sm text-muted-foreground">Timetable information is not connected.</p>
       </CardHeader>
       <CardContent>
         {entry ? (
           <dl className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
             {detailLabels.map(({ key, label }) => (
               <div key={key} className="space-y-1">
-                <dt className="text-xs font-medium text-muted-foreground">
-                  {label}
-                </dt>
-                <dd className="text-sm font-medium text-foreground">
-                  {entry[key] || "—"}
-                </dd>
+                <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
+                <dd className="text-sm font-medium text-foreground">{entry[key] || "—"}</dd>
               </div>
             ))}
           </dl>
@@ -67,8 +54,7 @@ export function TimetableEntryDetailsPanel({
             </span>
             <p className="text-sm font-medium">No timetable entry selected</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Entry details will appear here when timetable records are
-              available.
+              Entry details will appear here when timetable records are available.
             </p>
           </div>
         )}

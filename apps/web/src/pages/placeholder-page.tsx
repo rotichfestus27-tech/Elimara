@@ -28,7 +28,8 @@ export function PlaceholderPage({ item }: PlaceholderPageProps) {
             This area is not built yet
           </div>
           <p className="max-w-md text-xs leading-5 text-muted-foreground">
-            This page is part of the frontend foundation only. No records, workflows, or backend integrations are implemented.
+            This page is part of the frontend foundation only. No records, workflows, or backend
+            integrations are implemented.
           </p>
           <Badge className="mt-5 gap-1.5" variant="outline">
             <span>Placeholder</span>
@@ -39,4 +40,3 @@ export function PlaceholderPage({ item }: PlaceholderPageProps) {
     </div>
   );
 }
-

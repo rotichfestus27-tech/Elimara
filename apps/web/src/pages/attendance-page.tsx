@@ -17,6 +17,7 @@ import { RequestError, RequestLoading } from "@/components/api/request-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { UnauthorizedState } from "@/components/ui/data-states";
 import {
   Dialog,
   DialogContent,
@@ -165,6 +166,39 @@ const statusColors: Record<AttendanceStatus, string> = {
   EARLY_DEPARTURE: "bg-sky-500/15 text-sky-700 dark:text-sky-400 border-sky-500/30",
 };
 
+type BulkAttendanceAttendee = {
+  studentId?: string;
+  staffId?: string;
+  name: string;
+};
+
+export async function markAttendanceAttendees(
+  schoolId: string,
+  registerId: string,
+  attendees: BulkAttendanceAttendee[],
+) {
+  let markedCount = 0;
+  const failedNames: string[] = [];
+
+  for (const attendee of attendees) {
+    try {
+      await apiRequest(`/schools/${schoolId}/attendance/registers/${registerId}/records`, {
+        method: "POST",
+        body: {
+          studentId: attendee.studentId,
+          staffId: attendee.staffId,
+          status: "PRESENT",
+        },
+      });
+      markedCount += 1;
+    } catch {
+      failedNames.push(attendee.name);
+    }
+  }
+
+  return { attemptedCount: attendees.length, markedCount, failedNames };
+}
+
 // -----------------------------------------------------------------------------
 // Component: AttendancePage
 // -----------------------------------------------------------------------------
@@ -172,6 +206,14 @@ const statusColors: Record<AttendanceStatus, string> = {
 export function AttendancePage() {
   const { school } = useAuth();
   const queryClient = useQueryClient();
+  const permissions = new Set(school?.permissions ?? []);
+  const canReadAttendance = permissions.has("attendance.register.read");
+  const canManageAttendance = permissions.has("attendance.register.manage");
+  const canCorrectAttendance = permissions.has("attendance.register.correct");
+  const canReadStudents = permissions.has("students.profile.read");
+  const canReadStaff = permissions.has("staff.profile.read");
+  const canReadConfiguration = permissions.has("academics.configuration.read");
+  const canReadTimetable = permissions.has("timetable.read");
 
   const [activeTab, setActiveTab] = useState<"registers" | "lesson-attendance" | "reasons" | "analytics">("registers");
 
@@ -191,10 +233,14 @@ export function AttendancePage() {
     staffId?: string;
     name: string;
     code: string;
+    initialStatus?: AttendanceStatus;
     existingRecord?: AttendanceRecordData | null;
   } | null>(null);
 
   const [isAddReasonOpen, setIsAddReasonOpen] = useState(false);
+  const [bulkMarkResult, setBulkMarkResult] = useState<
+    Awaited<ReturnType<typeof markAttendanceAttendees>> | null
+  >(null);
 
   // ---------------------------------------------------------------------------
   // Data Queries
@@ -204,7 +250,7 @@ export function AttendancePage() {
   const yearsQuery = useSchoolList<AcademicYearRecord>("/academic-years", {
     limit: 100,
     status: "ACTIVE",
-  });
+  }, { enabled: canReadAttendance && canReadConfiguration });
   const years = yearsQuery.data?.data ?? [];
   const currentYear = years[0];
 
@@ -213,14 +259,14 @@ export function AttendancePage() {
     limit: 100,
     academicYearId: currentYear?.id,
     status: "ACTIVE",
-  });
+  }, { enabled: canReadAttendance && canReadConfiguration });
   const classes = classesQuery.data?.data ?? [];
 
   // Streams
   const streamsQuery = useSchoolList<ClassStreamRecord>("/streams", {
     limit: 100,
     status: "ACTIVE",
-  });
+  }, { enabled: canReadAttendance && canReadConfiguration });
   const streams = streamsQuery.data?.data ?? [];
 
   // Active Students
@@ -228,7 +274,7 @@ export function AttendancePage() {
     limit: 100,
     status: "ACTIVE",
     sortBy: "admissionNumber",
-  });
+  }, { enabled: canReadAttendance && canReadStudents });
   const students = studentsQuery.data?.data ?? [];
 
   // Active Staff
@@ -236,48 +282,66 @@ export function AttendancePage() {
     limit: 100,
     status: "ACTIVE",
     sortBy: "givenName",
-  });
+  }, { enabled: canReadAttendance && canReadStaff });
   const staffList = staffQuery.data?.data ?? [];
 
   // Absence Reasons
-  const reasonsQuery = useSchoolData<{ data: AbsenceReasonRecord[] }>("/attendance/reasons");
+  const reasonsQuery = useSchoolData<{ data: AbsenceReasonRecord[] }>(
+    "/attendance/reasons",
+    {},
+    { enabled: canReadAttendance },
+  );
   const reasons = (reasonsQuery.data?.data ?? []).filter((r) => r.status === "ACTIVE");
 
   // Registers Query
-  const registersQuery = useSchoolList<AttendanceRegisterRecord>("/attendance/registers", {
-    from: filterDate || undefined,
-    to: filterDate || undefined,
-    type: filterType === "ALL" ? undefined : filterType,
-    classId: filterClassId === "ALL" ? undefined : filterClassId,
-    limit: 100,
-    offset: 0,
-  });
+  const registersQuery = useSchoolList<AttendanceRegisterRecord>(
+    "/attendance/registers",
+    {
+      from: filterDate || undefined,
+      to: filterDate || undefined,
+      type: filterType === "ALL" ? undefined : filterType,
+      classId:
+        filterType === "STAFF_DAILY" || filterClassId === "ALL" ? undefined : filterClassId,
+      limit: 100,
+      offset: 0,
+    },
+    { enabled: canReadAttendance },
+  );
   const registers = registersQuery.data?.data ?? [];
 
   // Currently selected register
   const activeRegister =
     registers.find((r) => r.id === selectedRegisterId) || registers[0] || null;
   const currentRegisterId = activeRegister?.id ?? null;
+  const attendeeQuery = activeRegister?.type === "STAFF_DAILY" ? staffQuery : studentsQuery;
 
   // Records for active register
   const recordsQuery = useSchoolData<{ data: AttendanceRecordData[] }>(
     `/attendance/registers/${encodeURIComponent(currentRegisterId ?? "")}/records`,
     {},
-    { enabled: Boolean(currentRegisterId) },
+    { enabled: canReadAttendance && Boolean(currentRegisterId) },
   );
   const records = recordsQuery.data?.data ?? [];
 
   // Timetable Periods (for lesson lookup)
-  const periodsQuery = useSchoolData<{ data: TimetablePeriodRecord[] }>("/timetable-periods");
+  const periodsQuery = useSchoolData<{ data: TimetablePeriodRecord[] }>(
+    "/timetable-periods",
+    {},
+    { enabled: canReadAttendance && canReadTimetable },
+  );
   const periods = periodsQuery.data?.data ?? [];
 
   // Subjects & Class-Subjects (for lesson labels)
-  const subjectsQuery = useSchoolList<SubjectRecord>("/subjects", { limit: 100, status: "ACTIVE" });
+  const subjectsQuery = useSchoolList<SubjectRecord>(
+    "/subjects",
+    { limit: 100, status: "ACTIVE" },
+    { enabled: canReadAttendance && canReadConfiguration },
+  );
   const subjects = subjectsQuery.data?.data ?? [];
   const classSubjectsQuery = useSchoolList<ClassSubjectRecord>("/class-subjects", {
     limit: 200,
     status: "ACTIVE",
-  });
+  }, { enabled: canReadAttendance && canReadConfiguration });
   const classSubjects = classSubjectsQuery.data?.data ?? [];
 
   // ---------------------------------------------------------------------------
@@ -374,20 +438,16 @@ export function AttendancePage() {
       attendees,
     }: {
       registerId: string;
-      attendees: Array<{ studentId?: string; staffId?: string }>;
+      attendees: BulkAttendanceAttendee[];
     }) => {
-      for (const attendee of attendees) {
-        await apiRequest(`/schools/${school?.id}/attendance/registers/${registerId}/records`, {
-          method: "POST",
-          body: {
-            studentId: attendee.studentId,
-            staffId: attendee.staffId,
-            status: "PRESENT",
-          },
-        });
-      }
+      if (!school?.id) throw new Error("No school selected.");
+      return markAttendanceAttendees(school.id, registerId, attendees);
     },
-    onSuccess: () => {
+    onMutate: () => {
+      setBulkMarkResult(null);
+    },
+    onSuccess: (result) => {
+      setBulkMarkResult(result);
       void queryClient.invalidateQueries({ queryKey: ["school-data", school?.id] });
     },
   });
@@ -410,6 +470,15 @@ export function AttendancePage() {
   const countLate = records.filter((r) => r.status === "LATE").length;
   const countEarly = records.filter((r) => r.status === "EARLY_DEPARTURE").length;
 
+  if (!canReadAttendance) {
+    return (
+      <UnauthorizedState
+        description="The server-returned school permissions do not include attendance register read access."
+        title="Attendance access unavailable"
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -423,12 +492,12 @@ export function AttendancePage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {activeTab === "registers" && (
+          {activeTab === "registers" && canManageAttendance && canReadConfiguration && (
             <Button onClick={() => setIsCreateRegisterOpen(true)} size="sm">
               <Plus className="mr-1.5 h-4 w-4" /> New Attendance Register
             </Button>
           )}
-          {activeTab === "reasons" && (
+          {activeTab === "reasons" && canManageAttendance && (
             <Button onClick={() => setIsAddReasonOpen(true)} size="sm">
               <Plus className="mr-1.5 h-4 w-4" /> Add Absence Reason
             </Button>
@@ -511,7 +580,12 @@ export function AttendancePage() {
                   <span className="text-xs font-medium text-muted-foreground">Register Scope</span>
                   <select
                     className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                    onChange={(e) => setFilterType(e.target.value)}
+                    onChange={(e) => {
+                      setFilterType(e.target.value);
+                      if (e.target.value === "STAFF_DAILY") {
+                        setFilterClassId("ALL");
+                      }
+                    }}
                     value={filterType}
                   >
                     <option value="ALL">All Types</option>
@@ -525,6 +599,7 @@ export function AttendancePage() {
                   <span className="text-xs font-medium text-muted-foreground">Class Filter</span>
                   <select
                     className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    disabled={filterType === "STAFF_DAILY"}
                     onChange={(e) => setFilterClassId(e.target.value)}
                     value={filterClassId}
                   >
@@ -538,13 +613,15 @@ export function AttendancePage() {
                 </label>
 
                 <div className="flex items-end">
-                  <Button
-                    className="w-full"
-                    onClick={() => setIsCreateRegisterOpen(true)}
-                    size="default"
-                  >
-                    <Plus className="mr-1.5 h-4 w-4" /> Create Register
-                  </Button>
+                  {canManageAttendance && canReadConfiguration && (
+                    <Button
+                      className="w-full"
+                      onClick={() => setIsCreateRegisterOpen(true)}
+                      size="default"
+                    >
+                      <Plus className="mr-1.5 h-4 w-4" /> Create Register
+                    </Button>
+                  )}
                 </div>
               </div>
 
@@ -594,6 +671,19 @@ export function AttendancePage() {
           {/* Active Register Workspace */}
           {registersQuery.isPending ? (
             <RequestLoading />
+          ) : registersQuery.isError ? (
+            <div className="space-y-3">
+              <RequestError error={registersQuery.error} />
+              <Button
+                disabled={registersQuery.isFetching}
+                onClick={() => void registersQuery.refetch()}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                Retry loading attendance registers
+              </Button>
+            </div>
           ) : !activeRegister ? (
             <Card className="shadow-none">
               <CardContent className="flex flex-col items-center justify-center p-12 text-center text-muted-foreground">
@@ -603,16 +693,60 @@ export function AttendancePage() {
                   There are no attendance registers for this date and filter. Create one to begin
                   marking attendance.
                 </p>
-                <Button
-                  className="mt-4"
-                  onClick={() => setIsCreateRegisterOpen(true)}
-                  size="sm"
-                  variant="outline"
-                >
-                  <Plus className="mr-1.5 h-4 w-4" /> Create Register
-                </Button>
+                {canManageAttendance && canReadConfiguration && (
+                  <Button
+                    className="mt-4"
+                    onClick={() => setIsCreateRegisterOpen(true)}
+                    size="sm"
+                    variant="outline"
+                  >
+                    <Plus className="mr-1.5 h-4 w-4" /> Create Register
+                  </Button>
+                )}
               </CardContent>
             </Card>
+          ) : recordsQuery.isPending ? (
+            <RequestLoading />
+          ) : recordsQuery.isError ? (
+            <div className="space-y-3">
+              <RequestError error={recordsQuery.error} />
+              <Button
+                disabled={recordsQuery.isFetching}
+                onClick={() => void recordsQuery.refetch()}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                Retry loading attendance records
+              </Button>
+            </div>
+          ) : activeRegister.type === "STAFF_DAILY" && !canReadStaff ? (
+            <UnauthorizedState
+              description="Staff profile read access is required to show the staff attendance roster."
+              title="Staff roster unavailable"
+            />
+          ) : activeRegister.type !== "STAFF_DAILY" && !canReadStudents ? (
+            <UnauthorizedState
+              description="Student profile read access is required to show the student attendance roster."
+              title="Student roster unavailable"
+            />
+          ) : attendeeQuery.isPending ? (
+            <p className="p-6 text-center text-sm text-muted-foreground" role="status">
+              Loading attendance roster...
+            </p>
+          ) : attendeeQuery.isError ? (
+            <div className="space-y-3">
+              <RequestError error={attendeeQuery.error} />
+              <Button
+                disabled={attendeeQuery.isFetching}
+                onClick={() => void attendeeQuery.refetch()}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                Retry loading attendance roster
+              </Button>
+            </div>
           ) : (
             <div className="space-y-4">
               {/* Register Header & Stats Card */}
@@ -653,7 +787,8 @@ export function AttendancePage() {
                   <div className="flex flex-wrap items-center gap-2">
                     {activeRegister.status === "OPEN" ? (
                       <>
-                        <Button
+                        {canManageAttendance && (
+                          <Button
                           disabled={bulkPresentMutation.isPending}
                           onClick={() => {
                             if (activeRegister.type === "STAFF_DAILY") {
@@ -671,7 +806,10 @@ export function AttendancePage() {
                               ) {
                                 bulkPresentMutation.mutate({
                                   registerId: activeRegister.id,
-                                  attendees: unmarked.map((st) => ({ staffId: st.id })),
+                                  attendees: unmarked.map((st) => ({
+                                    staffId: st.id,
+                                    name: `${st.givenName} ${st.familyName}`,
+                                  })),
                                 });
                               }
                             } else {
@@ -689,7 +827,10 @@ export function AttendancePage() {
                               ) {
                                 bulkPresentMutation.mutate({
                                   registerId: activeRegister.id,
-                                  attendees: unmarked.map((s) => ({ studentId: s.id })),
+                                  attendees: unmarked.map((s) => ({
+                                    studentId: s.id,
+                                    name: `${s.givenName} ${s.familyName}`,
+                                  })),
                                 });
                               }
                             }
@@ -697,9 +838,11 @@ export function AttendancePage() {
                           size="sm"
                           variant="outline"
                         >
-                          <Check className="mr-1.5 h-4 w-4" /> Mark All Present
-                        </Button>
-                        <Button
+                            <Check className="mr-1.5 h-4 w-4" /> Mark All Present
+                          </Button>
+                        )}
+                        {canManageAttendance && (
+                          <Button
                           disabled={finalizeMutation.isPending}
                           onClick={() => {
                             if (
@@ -712,8 +855,9 @@ export function AttendancePage() {
                           }}
                           size="sm"
                         >
-                          <Lock className="mr-1.5 h-4 w-4" /> Finalize Register
-                        </Button>
+                            <Lock className="mr-1.5 h-4 w-4" /> Finalize Register
+                          </Button>
+                        )}
                       </>
                     ) : (
                       <span className="text-xs text-muted-foreground">
@@ -722,6 +866,23 @@ export function AttendancePage() {
                     )}
                   </div>
                 </CardHeader>
+
+                {bulkMarkResult && (
+                  <div
+                    className="px-6 pt-4 text-sm"
+                    role={bulkMarkResult.failedNames.length > 0 ? "alert" : "status"}
+                  >
+                    {bulkMarkResult.failedNames.length > 0 ? (
+                      <>
+                        Marked {bulkMarkResult.markedCount} of {bulkMarkResult.attemptedCount}.
+                        Failed for: {bulkMarkResult.failedNames.join(", ")}. Review those entries
+                        and retry individually.
+                      </>
+                    ) : (
+                      `Marked all ${bulkMarkResult.markedCount} attendees present.`
+                    )}
+                  </div>
+                )}
 
                 <CardContent className="pt-0">
                   {/* Summary Metric Pills */}
@@ -806,9 +967,11 @@ export function AttendancePage() {
                               </td>
                               <td className="px-4 py-2.5 text-right">
                                 <div className="inline-flex items-center gap-1.5">
-                                  {!isFinalized ? (
+                                  {!isFinalized &&
+                                  (record ? canCorrectAttendance : canManageAttendance) ? (
                                     <>
                                       <button
+                                        aria-label={`Mark ${st.givenName} ${st.familyName} present`}
                                         className={`h-7 w-7 rounded font-semibold text-xs transition-colors ${
                                           record?.status === "PRESENT"
                                             ? "bg-emerald-600 text-white"
@@ -837,11 +1000,12 @@ export function AttendancePage() {
                                             staffId: st.id,
                                             name: `${st.givenName} ${st.familyName}`,
                                             code: st.staffNumber,
+                                            initialStatus: "ABSENT",
                                             existingRecord: record,
                                           });
                                           setIsMarkModalOpen(true);
                                         }}
-                                        title="Mark Absent"
+                                        aria-label={`Mark ${st.givenName} ${st.familyName} absent`}
                                         type="button"
                                       >
                                         A
@@ -857,17 +1021,18 @@ export function AttendancePage() {
                                             staffId: st.id,
                                             name: `${st.givenName} ${st.familyName}`,
                                             code: st.staffNumber,
+                                            initialStatus: "LATE",
                                             existingRecord: record,
                                           });
                                           setIsMarkModalOpen(true);
                                         }}
-                                        title="Mark Late"
+                                        aria-label={`Mark ${st.givenName} ${st.familyName} late`}
                                         type="button"
                                       >
                                         L
                                       </button>
                                     </>
-                                  ) : (
+                                  ) : record && canCorrectAttendance ? (
                                     <Button
                                       onClick={() => {
                                         setMarkingTarget({
@@ -883,7 +1048,7 @@ export function AttendancePage() {
                                     >
                                       <Edit2 className="mr-1 h-3 w-3" /> Correct
                                     </Button>
-                                  )}
+                                  ) : null}
                                 </div>
                               </td>
                             </tr>
@@ -923,9 +1088,11 @@ export function AttendancePage() {
                               </td>
                               <td className="px-4 py-2.5 text-right">
                                 <div className="inline-flex items-center gap-1.5">
-                                  {!isFinalized ? (
+                                  {!isFinalized &&
+                                  (record ? canCorrectAttendance : canManageAttendance) ? (
                                     <>
                                       <button
+                                        aria-label={`Mark ${st.givenName} ${st.familyName} present`}
                                         className={`h-7 w-7 rounded font-semibold text-xs transition-colors ${
                                           record?.status === "PRESENT"
                                             ? "bg-emerald-600 text-white"
@@ -938,12 +1105,12 @@ export function AttendancePage() {
                                             status: "PRESENT",
                                           });
                                         }}
-                                        title="Mark Present"
                                         type="button"
                                       >
                                         P
                                       </button>
                                       <button
+                                        aria-label={`Mark ${st.givenName} ${st.familyName} absent`}
                                         className={`h-7 w-7 rounded font-semibold text-xs transition-colors ${
                                           record?.status === "ABSENT"
                                             ? "bg-rose-600 text-white"
@@ -954,11 +1121,11 @@ export function AttendancePage() {
                                             studentId: st.id,
                                             name: `${st.givenName} ${st.familyName}`,
                                             code: st.admissionNumber,
+                                            initialStatus: "ABSENT",
                                             existingRecord: record,
                                           });
                                           setIsMarkModalOpen(true);
                                         }}
-                                        title="Mark Absent"
                                         type="button"
                                       >
                                         A
@@ -969,22 +1136,23 @@ export function AttendancePage() {
                                             ? "bg-amber-600 text-white"
                                             : "border border-border bg-card hover:bg-amber-50 hover:text-amber-700"
                                         }`}
+                                        aria-label={`Mark ${st.givenName} ${st.familyName} late`}
                                         onClick={() => {
                                           setMarkingTarget({
                                             studentId: st.id,
                                             name: `${st.givenName} ${st.familyName}`,
                                             code: st.admissionNumber,
+                                            initialStatus: "LATE",
                                             existingRecord: record,
                                           });
                                           setIsMarkModalOpen(true);
                                         }}
-                                        title="Mark Late"
                                         type="button"
                                       >
                                         L
                                       </button>
                                     </>
-                                  ) : (
+                                  ) : record && canCorrectAttendance ? (
                                     <Button
                                       onClick={() => {
                                         setMarkingTarget({
@@ -1000,7 +1168,7 @@ export function AttendancePage() {
                                     >
                                       <Edit2 className="mr-1 h-3 w-3" /> Correct
                                     </Button>
-                                  )}
+                                  ) : null}
                                 </div>
                               </td>
                             </tr>
@@ -1020,19 +1188,27 @@ export function AttendancePage() {
       {/* TAB 2: TIMETABLE LESSON ATTENDANCE                                    */}
       {/* ===================================================================== */}
       {activeTab === "lesson-attendance" && (
-        <LessonAttendanceWorkspace
-          classMap={classMap}
-          classSubjectMap={classSubjectMap}
-          currentYearId={currentYear?.id ?? ""}
-          onSelectRegister={(regId) => {
-            setSelectedRegisterId(regId);
-            setActiveTab("registers");
-          }}
-          periodMap={periodMap}
-          schoolId={school?.id ?? ""}
-          staffMap={staffMap}
-          streamMap={streamMap}
-        />
+        canReadTimetable && canReadConfiguration && canReadStaff ? (
+          <LessonAttendanceWorkspace
+            canManageAttendance={canManageAttendance}
+            classMap={classMap}
+            classSubjectMap={classSubjectMap}
+            currentYearId={currentYear?.id ?? ""}
+            onSelectRegister={(regId) => {
+              setSelectedRegisterId(regId);
+              setActiveTab("registers");
+            }}
+            periodMap={periodMap}
+            schoolId={school?.id ?? ""}
+            staffMap={staffMap}
+            streamMap={streamMap}
+          />
+        ) : (
+          <UnauthorizedState
+            description="Viewing lesson attendance requires timetable, academic configuration, and staff read access."
+            title="Lesson attendance unavailable"
+          />
+        )
       )}
 
       {/* ===================================================================== */}
@@ -1041,6 +1217,7 @@ export function AttendancePage() {
       {activeTab === "reasons" && (
         <AbsenceReasonsWorkspace
           onAdd={() => setIsAddReasonOpen(true)}
+          canManage={canManageAttendance}
           reasons={reasons}
           schoolId={school?.id ?? ""}
         />
@@ -1059,7 +1236,7 @@ export function AttendancePage() {
       {/* ===================================================================== */}
       {/* MODAL: CREATE ATTENDANCE REGISTER                                     */}
       {/* ===================================================================== */}
-      {isCreateRegisterOpen && currentYear && (
+      {isCreateRegisterOpen && canManageAttendance && canReadConfiguration && currentYear && (
         <CreateRegisterDialog
           academicYearId={currentYear.id}
           classes={classes}
@@ -1076,9 +1253,14 @@ export function AttendancePage() {
       {/* ===================================================================== */}
       {/* MODAL: MARK ATTENDANCE MODAL (LATE / ABSENT / EARLY / CORRECTION)     */}
       {/* ===================================================================== */}
-      {isMarkModalOpen && markingTarget && activeRegister && (
+      {isMarkModalOpen &&
+        markingTarget &&
+        activeRegister &&
+        (markingTarget.existingRecord ? canCorrectAttendance : canManageAttendance) && (
         <MarkAttendanceDialog
           attendee={markingTarget}
+          error={markAttendanceMutation.isError ? markAttendanceMutation.error : null}
+          isPending={markAttendanceMutation.isPending}
           onClose={() => {
             setIsMarkModalOpen(false);
             setMarkingTarget(null);
@@ -1099,7 +1281,7 @@ export function AttendancePage() {
       {/* ===================================================================== */}
       {/* MODAL: ADD ABSENCE REASON                                             */}
       {/* ===================================================================== */}
-      {isAddReasonOpen && (
+      {isAddReasonOpen && canManageAttendance && (
         <AddReasonDialog onClose={() => setIsAddReasonOpen(false)} schoolId={school?.id ?? ""} />
       )}
     </div>
@@ -1266,6 +1448,8 @@ function CreateRegisterDialog({
 
 function MarkAttendanceDialog({
   attendee,
+  error,
+  isPending,
   reasons,
   onClose,
   onSave,
@@ -1275,8 +1459,11 @@ function MarkAttendanceDialog({
     staffId?: string;
     name: string;
     code: string;
+    initialStatus?: AttendanceStatus;
     existingRecord?: AttendanceRecordData | null;
   };
+  error: Error | null;
+  isPending: boolean;
   reasons: AbsenceReasonRecord[];
   onClose: () => void;
   onSave: (data: {
@@ -1287,7 +1474,7 @@ function MarkAttendanceDialog({
   }) => void;
 }) {
   const [status, setStatus] = useState<AttendanceStatus>(
-    attendee.existingRecord?.status ?? "ABSENT",
+    attendee.initialStatus ?? attendee.existingRecord?.status ?? "ABSENT",
   );
   const [reasonId, setReasonId] = useState<string>(attendee.existingRecord?.reasonId ?? "");
   const [arrivalAt, setArrivalAt] = useState<string>(attendee.existingRecord?.arrivalAt ?? "08:15");
@@ -1301,7 +1488,7 @@ function MarkAttendanceDialog({
   const departureInputId = useId();
 
   return (
-    <Dialog onOpenChange={(open) => !open && onClose()} open>
+    <Dialog onOpenChange={(open) => !open && !isPending && onClose()} open>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Record Attendance Details</DialogTitle>
@@ -1314,6 +1501,7 @@ function MarkAttendanceDialog({
           className="space-y-4"
           onSubmit={(e) => {
             e.preventDefault();
+            if (isPending) return;
             onSave({
               status,
               reasonId: reasonId || null,
@@ -1322,6 +1510,8 @@ function MarkAttendanceDialog({
             });
           }}
         >
+          {error && <RequestError error={error} />}
+
           <label className="block space-y-1 text-sm" htmlFor={statusId}>
             <span className="text-xs font-medium text-muted-foreground">Attendance Status</span>
             <select
@@ -1395,10 +1585,12 @@ function MarkAttendanceDialog({
           )}
 
           <DialogFooter>
-            <Button onClick={onClose} type="button" variant="outline">
+            <Button disabled={isPending} onClick={onClose} type="button" variant="outline">
               Cancel
             </Button>
-            <Button type="submit">Save Attendance</Button>
+            <Button disabled={isPending} type="submit">
+              {isPending ? "Saving..." : "Save Attendance"}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -1470,6 +1662,7 @@ function AddReasonDialog({ schoolId, onClose }: { schoolId: string; onClose: () 
 }
 
 function LessonAttendanceWorkspace({
+  canManageAttendance,
   schoolId,
   currentYearId,
   classMap,
@@ -1479,6 +1672,7 @@ function LessonAttendanceWorkspace({
   periodMap,
   onSelectRegister,
 }: {
+  canManageAttendance: boolean;
   schoolId: string;
   currentYearId: string;
   classMap: Map<string, string>;
@@ -1575,7 +1769,22 @@ function LessonAttendanceWorkspace({
             <RequestError error={takeAttendanceMutation.error} />
           )}
 
-          {!publishedTimetable ? (
+          {timetablesQuery.isPending ? (
+            <RequestLoading />
+          ) : timetablesQuery.isError ? (
+            <div className="space-y-3">
+              <RequestError error={timetablesQuery.error} />
+              <Button
+                disabled={timetablesQuery.isFetching}
+                onClick={() => void timetablesQuery.refetch()}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                Retry loading published timetable
+              </Button>
+            </div>
+          ) : !publishedTimetable ? (
             <div className="rounded-md border border-dashed p-8 text-center text-xs text-muted-foreground">
               <AlertCircle className="mx-auto mb-2 h-6 w-6 text-muted-foreground/60" />
               <p className="font-medium text-foreground">No Published Timetable</p>
@@ -1585,6 +1794,19 @@ function LessonAttendanceWorkspace({
             </div>
           ) : lessonsQuery.isPending ? (
             <RequestLoading />
+          ) : lessonsQuery.isError ? (
+            <div className="space-y-3">
+              <RequestError error={lessonsQuery.error} />
+              <Button
+                disabled={lessonsQuery.isFetching}
+                onClick={() => void lessonsQuery.refetch()}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                Retry loading published lessons
+              </Button>
+            </div>
           ) : lessons.length === 0 ? (
             <div className="rounded-md border border-dashed p-8 text-center text-xs text-muted-foreground">
               No lessons are scheduled on {currentWeekday} in the published timetable.
@@ -1620,16 +1842,18 @@ function LessonAttendanceWorkspace({
                       </div>
                     </div>
 
-                    <div className="mt-4 pt-2 border-t">
-                      <Button
-                        className="w-full"
-                        disabled={takeAttendanceMutation.isPending}
-                        onClick={() => takeAttendanceMutation.mutate(lesson)}
-                        size="sm"
-                      >
-                        <UserCheck className="mr-1.5 h-3.5 w-3.5" /> Take Attendance
-                      </Button>
-                    </div>
+                    {canManageAttendance && (
+                      <div className="mt-4 border-t pt-2">
+                        <Button
+                          className="w-full"
+                          disabled={takeAttendanceMutation.isPending}
+                          onClick={() => takeAttendanceMutation.mutate(lesson)}
+                          size="sm"
+                        >
+                          <UserCheck className="mr-1.5 h-3.5 w-3.5" /> Take Attendance
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -1642,10 +1866,12 @@ function LessonAttendanceWorkspace({
 }
 
 function AbsenceReasonsWorkspace({
+  canManage,
   schoolId,
   reasons,
   onAdd,
 }: {
+  canManage: boolean;
   schoolId: string;
   reasons: AbsenceReasonRecord[];
   onAdd: () => void;
@@ -1672,9 +1898,11 @@ function AbsenceReasonsWorkspace({
             Active categories for documenting excused and unexcused absences.
           </p>
         </div>
-        <Button onClick={onAdd} size="sm">
-          <Plus className="mr-1 h-3.5 w-3.5" /> Add Reason
-        </Button>
+        {canManage && (
+          <Button onClick={onAdd} size="sm">
+            <Plus className="mr-1 h-3.5 w-3.5" /> Add Reason
+          </Button>
+        )}
       </CardHeader>
       <CardContent className="p-0">
         <div className="overflow-x-auto">
@@ -1684,13 +1912,16 @@ function AbsenceReasonsWorkspace({
                 <th className="px-4 py-2.5 font-medium">Reason Name</th>
                 <th className="px-4 py-2.5 font-medium">Status</th>
                 <th className="px-4 py-2.5 font-medium">Configured Date</th>
-                <th className="px-4 py-2.5 text-right font-medium">Actions</th>
+                {canManage && <th className="px-4 py-2.5 text-right font-medium">Actions</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {reasons.length === 0 ? (
                 <tr>
-                  <td className="px-4 py-8 text-center text-xs text-muted-foreground" colSpan={4}>
+                  <td
+                    className="px-4 py-8 text-center text-xs text-muted-foreground"
+                    colSpan={canManage ? 4 : 3}
+                  >
                     No active absence reasons configured yet. Add common reasons like Medical or
                     Authorized Leave.
                   </td>
@@ -1705,20 +1936,22 @@ function AbsenceReasonsWorkspace({
                     <td className="px-4 py-2.5 text-xs text-muted-foreground">
                       {new Date(r.createdAt).toLocaleDateString()}
                     </td>
-                    <td className="px-4 py-2.5 text-right text-xs">
-                      <Button
-                        disabled={deactivateMutation.isPending}
-                        onClick={() => {
-                          if (confirm(`Deactivate absence reason "${r.name}"?`)) {
-                            deactivateMutation.mutate(r.id);
-                          }
-                        }}
-                        size="sm"
-                        variant="ghost"
-                      >
-                        Deactivate
-                      </Button>
-                    </td>
+                    {canManage && (
+                      <td className="px-4 py-2.5 text-right text-xs">
+                        <Button
+                          disabled={deactivateMutation.isPending}
+                          onClick={() => {
+                            if (confirm(`Deactivate absence reason "${r.name}"?`)) {
+                              deactivateMutation.mutate(r.id);
+                            }
+                          }}
+                          size="sm"
+                          variant="ghost"
+                        >
+                          Deactivate
+                        </Button>
+                      </td>
+                    )}
                   </tr>
                 ))
               )}
@@ -1746,6 +1979,24 @@ function AttendanceAnalyticsWorkspace({
   const [selectedType, setSelectedType] = useState<string>("STUDENT_DAILY");
   const [selectedClassId, setSelectedClassId] = useState<string>("");
 
+  const fromTimestamp = Date.parse(`${fromDate}T00:00:00.000Z`);
+  const toTimestamp = Date.parse(`${toDate}T00:00:00.000Z`);
+  const dateRangeDays = (toTimestamp - fromTimestamp) / 86_400_000 + 1;
+  const dateRangeError =
+    !fromDate || !toDate
+      ? "Choose both a start date and an end date."
+      : fromDate > toDate
+        ? "The start date must be on or before the end date."
+        : !Number.isFinite(fromTimestamp) ||
+            !Number.isFinite(toTimestamp) ||
+            new Date(fromTimestamp).toISOString().slice(0, 10) !== fromDate ||
+            new Date(toTimestamp).toISOString().slice(0, 10) !== toDate
+          ? "Enter valid start and end dates."
+          : dateRangeDays > 366
+            ? "Choose a date range of 366 days or fewer."
+            : null;
+  const isDateRangeValid = dateRangeError === null;
+
   const summaryQuery = useSchoolData<{ data: AttendanceSummaryRow[] }>(
     "/attendance/summary",
     {
@@ -1754,7 +2005,7 @@ function AttendanceAnalyticsWorkspace({
       type: selectedType || undefined,
       classId: selectedClassId || undefined,
     },
-    { enabled: Boolean(fromDate && toDate && fromDate <= toDate) },
+    { enabled: isDateRangeValid },
   );
 
   const summaryRows = summaryQuery.data?.data ?? [];
@@ -1774,7 +2025,7 @@ function AttendanceAnalyticsWorkspace({
     if (row.status === "EARLY_DEPARTURE") earlyMarks += row.total;
   }
 
-  const attendanceRate = totalMarks > 0 ? Math.round((presentMarks / totalMarks) * 100) : 100;
+  const attendanceRate = totalMarks > 0 ? Math.round((presentMarks / totalMarks) * 100) : null;
 
   return (
     <div className="space-y-4">
@@ -1835,12 +2086,23 @@ function AttendanceAnalyticsWorkspace({
         </CardContent>
       </Card>
 
+      {dateRangeError && (
+        <p className="text-sm text-destructive" role="alert">
+          {dateRangeError}
+        </p>
+      )}
+
       {/* Metric Cards */}
+      {isDateRangeValid && summaryQuery.isSuccess && (
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="rounded-xl border bg-card p-4 text-center">
           <span className="text-xs font-medium text-muted-foreground">Overall Attendance Rate</span>
-          <div className="mt-1 text-2xl font-bold text-primary">{attendanceRate}%</div>
-          <span className="text-[11px] text-muted-foreground">{presentMarks} present of {totalMarks}</span>
+          <div className="mt-1 text-2xl font-bold text-primary">
+            {attendanceRate === null ? "—" : `${attendanceRate}%`}
+          </div>
+          <span className="text-[11px] text-muted-foreground">
+            {totalMarks === 0 ? "No attendance marks recorded" : `${presentMarks} present of ${totalMarks}`}
+          </span>
         </div>
         <div className="rounded-xl border bg-card p-4 text-center">
           <span className="text-xs font-medium text-muted-foreground">Total Absences</span>
@@ -1858,8 +2120,10 @@ function AttendanceAnalyticsWorkspace({
           <span className="text-[11px] text-muted-foreground">Excused / early departures</span>
         </div>
       </div>
+      )}
 
       {/* Breakdown Table */}
+      {isDateRangeValid && (
       <Card className="shadow-none">
         <CardHeader className="pb-3">
           <CardTitle className="text-base font-semibold">Aggregated Attendance Rows</CardTitle>
@@ -1884,6 +2148,23 @@ function AttendanceAnalyticsWorkspace({
                       <RequestLoading />
                     </td>
                   </tr>
+                ) : summaryQuery.isError ? (
+                  <tr>
+                    <td className="px-4 py-8 text-center" colSpan={3}>
+                      <div className="space-y-3">
+                        <RequestError error={summaryQuery.error} />
+                        <Button
+                          disabled={summaryQuery.isFetching}
+                          onClick={() => void summaryQuery.refetch()}
+                          size="sm"
+                          type="button"
+                          variant="outline"
+                        >
+                          Retry loading attendance history
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
                 ) : summaryRows.length === 0 ? (
                   <tr>
                     <td className="px-4 py-8 text-center text-xs text-muted-foreground" colSpan={3}>
@@ -1891,8 +2172,8 @@ function AttendanceAnalyticsWorkspace({
                     </td>
                   </tr>
                 ) : (
-                  summaryRows.map((row, idx) => (
-                    <tr className="hover:bg-muted/20" key={`${row.date}-${row.status}-${idx}`}>
+                  summaryRows.map((row) => (
+                    <tr className="hover:bg-muted/20" key={`${row.date}-${row.status}`}>
                       <td className="px-4 py-2.5 text-xs font-medium text-foreground">{row.date}</td>
                       <td className="px-4 py-2.5 text-xs">
                         <span
@@ -1914,6 +2195,7 @@ function AttendanceAnalyticsWorkspace({
           </div>
         </CardContent>
       </Card>
+      )}
     </div>
   );
 }

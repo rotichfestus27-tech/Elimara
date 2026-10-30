@@ -79,7 +79,11 @@ export class FakeAssessmentStore implements AssessmentStore {
     return this.transition(input, ["FINALIZED", "PUBLISHED"], "OPEN");
   }
 
-  async listResults(schoolId: string, assessmentId: string): Promise<ResultPage | null> {
+  async listResults(
+    schoolId: string,
+    assessmentId: string,
+    _query: { limit: number; offset: number; studentId?: string; missingOnly?: boolean },
+  ): Promise<ResultPage | null> {
     if (!this.hasSchool(assessmentId, schoolId)) return null;
     const items = this.marks.get(assessmentId) ?? [];
     return {
@@ -89,12 +93,23 @@ export class FakeAssessmentStore implements AssessmentStore {
     };
   }
 
+  async getResult(schoolId: string, assessmentId: string, studentId: string): Promise<AssessmentResultRecord | null> {
+    if (!this.hasSchool(assessmentId, schoolId)) return null;
+    return (this.marks.get(assessmentId) ?? []).find((item) => item.studentId === studentId) ?? null;
+  }
+
   async enterResults(_input: EnterResultsInput): Promise<AssessmentResultRecord[]> {
     return [];
   }
 
   async correctResult(
     _input: CorrectAssessmentResultInput,
+  ): Promise<AssessmentResultRecord | null> {
+    return null;
+  }
+
+  async exemptResult(
+    _input: Parameters<AssessmentStore["exemptResult"]>[0],
   ): Promise<AssessmentResultRecord | null> {
     return null;
   }

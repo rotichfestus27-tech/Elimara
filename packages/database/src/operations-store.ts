@@ -7,27 +7,40 @@ import {
   Prisma,
   SchoolStatus,
   StaffStatus,
+  StudentStatus,
   TimetableStatus,
   Weekday,
   type PrismaClient,
 } from "@prisma/client";
 import type {
   AbsenceReasonRecord,
+  AttendanceClassSummaryQuery,
+  AttendanceClassSummaryRow,
   AttendanceRecordData,
   AttendanceRegisterRecord,
+  AttendanceRosterItem,
   AttendanceSummaryRow,
+  AttendanceTermSummaryQuery,
+  AttendanceTermSummaryRow,
   AvailabilityRecord,
   CorrectAttendanceInput,
   CreateAttendanceRegisterInput,
   CreateTimetableLessonInput,
+  OperationsContext,
   OperationsPage,
   OperationsPageQuery,
   RecordAttendanceInput,
   RoomRecord,
   SchoolOperationsStore,
+  StudentAttendanceHistoryQuery,
+  StudentAttendanceHistoryRecord,
+  TimetableLessonQuery,
   TimetableLessonRecord,
   TimetablePeriodRecord,
+  TimetableQuery,
   TimetableRecord,
+  TimetableValidationResult,
+  UpdateTimetableInput,
   UpdateTimetableLessonInput,
 } from "./operations-contracts.js";
 import { isWithinAvailability, timetableConflict, type TimetableSlot } from "./operations-rules.js";
@@ -114,12 +127,16 @@ export class PrismaSchoolOperationsStore implements SchoolOperationsStore {
       to?: string;
       type?: "STUDENT_DAILY" | "STUDENT_LESSON" | "STAFF_DAILY";
       classId?: string;
+      streamId?: string;
+      academicYearId?: string;
     },
   ): Promise<OperationsPage<AttendanceRegisterRecord>> {
     const where: Prisma.AttendanceRegisterWhereInput = {
       schoolId,
+      ...(query.academicYearId ? { academicYearId: query.academicYearId } : {}),
       ...(query.type ? { type: query.type } : {}),
       ...(query.classId ? { classId: query.classId } : {}),
+      ...(query.streamId ? { streamId: query.streamId } : {}),
       ...(query.from || query.to
         ? {
             date: {
@@ -140,6 +157,82 @@ export class PrismaSchoolOperationsStore implements SchoolOperationsStore {
       this.prisma.attendanceRegister.count({ where }),
     ]);
     return { items, total };
+  }
+
+  async getAttendanceRegister(
+    schoolId: string,
+    registerId: string,
+  ): Promise<AttendanceRegisterRecord | null> {
+    return this.prisma.attendanceRegister.findFirst({
+      where: { schoolId, id: registerId },
+      select: registerSelect,
+    });
+  }
+
+  async getAttendanceRoster(
+    schoolId: string,
+    registerId: string,
+  ): Promise<AttendanceRosterItem[] | null> {
+    const register = await this.prisma.attendanceRegister.findFirst({
+      where: { schoolId, id: registerId },
+      select: {
+        id: true,
+        type: true,
+        academicYearId: true,
+        classId: true,
+        streamId: true,
+      },
+    });
+    if (!register) return null;
+    const existingRecords = await this.prisma.attendanceRecord.findMany({
+      where: { schoolId, registerId },
+      select: attendanceRecordSelect,
+      orderBy: [{ markedAt: "asc" }, { id: "asc" }],
+    });
+    if (register.type === AttendanceRegisterType.STAFF_DAILY) {
+      const staffMembers = await this.prisma.staff.findMany({
+        where: { schoolId, status: StaffStatus.ACTIVE },
+        select: { id: true, staffNumber: true, givenName: true, familyName: true },
+        orderBy: [{ staffNumber: "asc" }, { id: "asc" }],
+      });
+      const recordByStaffId = new Map(
+        existingRecords.filter((r) => r.staffId).map((r) => [r.staffId, r]),
+      );
+      return staffMembers.map((s) => ({
+        attendeeId: s.id,
+        attendeeType: "STAFF",
+        name: `${s.givenName} ${s.familyName}`,
+        identifier: s.staffNumber,
+        record: recordByStaffId.get(s.id) ?? null,
+      }));
+    }
+    if (!register.classId) return [];
+    const placements = await this.prisma.studentPlacement.findMany({
+      where: {
+        schoolId,
+        academicYearId: register.academicYearId,
+        classId: register.classId,
+        ...(register.streamId ? { streamId: register.streamId } : {}),
+        endedAt: null,
+        student: { status: StudentStatus.ACTIVE },
+      },
+      select: {
+        student: {
+          select: { id: true, admissionNumber: true, givenName: true, familyName: true },
+        },
+      },
+      orderBy: [{ student: { admissionNumber: "asc" } }, { student: { id: "asc" } }],
+    });
+    const recordByStudentId = new Map(
+      existingRecords.filter((r) => r.studentId).map((r) => [r.studentId, r]),
+    );
+    return placements.map((p) => ({
+      attendeeId: p.student.id,
+      attendeeType: "STUDENT",
+      name: `${p.student.givenName} ${p.student.familyName}`,
+      identifier: p.student.admissionNumber,
+      record: recordByStudentId.get(p.student.id) ?? null,
+    }));
   }
 
   async createAttendanceRegister(
@@ -309,6 +402,157 @@ export class PrismaSchoolOperationsStore implements SchoolOperationsStore {
         });
         await audit(tx, input, "ATTENDANCE_RECORD_CREATED", record.id);
         return record;
+      }),
+    );
+  }
+
+  async markAllPresent(
+    input: OperationsContext & { registerId: string },
+  ): Promise<AttendanceRecordData[]> {
+    return this.guard(() =>
+      this.transaction(async (tx) => {
+        await lockRegister(tx, input.schoolId, input.registerId);
+        await requireActiveSchool(tx, input.schoolId);
+        const register = await tx.attendanceRegister.findFirst({
+          where: { schoolId: input.schoolId, id: input.registerId },
+          select: {
+            id: true,
+            type: true,
+            status: true,
+            academicYearId: true,
+            classId: true,
+            streamId: true,
+          },
+        });
+        if (!register) throw storeError("NOT_FOUND", "The attendance register was not found.");
+        if (register.status !== AttendanceRegisterStatus.OPEN) {
+          throw storeError("REGISTER_FINALIZED", "Finalized registers cannot accept new records.");
+        }
+        const existingRecords = await tx.attendanceRecord.findMany({
+          where: { schoolId: input.schoolId, registerId: input.registerId },
+          select: { studentId: true, staffId: true },
+        });
+        const createdRecords: AttendanceRecordData[] = [];
+        if (register.type === AttendanceRegisterType.STAFF_DAILY) {
+          const recordedStaffIds = new Set(existingRecords.map((r) => r.staffId).filter(Boolean));
+          const staffMembers = await tx.staff.findMany({
+            where: { schoolId: input.schoolId, status: StaffStatus.ACTIVE },
+            select: { id: true },
+            orderBy: [{ staffNumber: "asc" }, { id: "asc" }],
+          });
+          const unrecordedStaff = staffMembers.filter((s) => !recordedStaffIds.has(s.id));
+          for (const s of unrecordedStaff) {
+            const record = await tx.attendanceRecord.create({
+              data: {
+                schoolId: input.schoolId,
+                registerId: input.registerId,
+                staffId: s.id,
+                status: AttendanceStatus.PRESENT,
+                markedByUserId: input.actorUserId,
+              },
+              select: attendanceRecordSelect,
+            });
+            createdRecords.push(record);
+          }
+        } else {
+          if (!register.classId) {
+            throw storeError("INVALID_RELATIONSHIP", "Student registers require a class.");
+          }
+          const recordedStudentIds = new Set(
+            existingRecords.map((r) => r.studentId).filter(Boolean),
+          );
+          const placements = await tx.studentPlacement.findMany({
+            where: {
+              schoolId: input.schoolId,
+              academicYearId: register.academicYearId,
+              classId: register.classId,
+              ...(register.streamId ? { streamId: register.streamId } : {}),
+              endedAt: null,
+              student: { status: StudentStatus.ACTIVE },
+            },
+            select: { studentId: true },
+            orderBy: [{ student: { admissionNumber: "asc" } }, { student: { id: "asc" } }],
+          });
+          const unrecordedStudents = placements.filter((p) => !recordedStudentIds.has(p.studentId));
+          for (const p of unrecordedStudents) {
+            const record = await tx.attendanceRecord.create({
+              data: {
+                schoolId: input.schoolId,
+                registerId: input.registerId,
+                studentId: p.studentId,
+                status: AttendanceStatus.PRESENT,
+                markedByUserId: input.actorUserId,
+              },
+              select: attendanceRecordSelect,
+            });
+            createdRecords.push(record);
+          }
+        }
+        if (createdRecords.length > 0) {
+          await audit(tx, input, "ATTENDANCE_BATCH_MARKED", input.registerId);
+        }
+        return createdRecords;
+      }),
+    );
+  }
+
+  async bulkRecordAttendance(input: Parameters<SchoolOperationsStore["bulkRecordAttendance"]>[0]): Promise<AttendanceRecordData[]> {
+    return this.guard(() =>
+      this.transaction(async (tx) => {
+        await lockRegister(tx, input.schoolId, input.registerId);
+        await requireActiveSchool(tx, input.schoolId);
+        const register = await tx.attendanceRegister.findFirst({
+          where: { schoolId: input.schoolId, id: input.registerId },
+          select: {
+            id: true,
+            type: true,
+            status: true,
+            academicYearId: true,
+            classId: true,
+            streamId: true,
+          },
+        });
+        if (!register) throw storeError("NOT_FOUND", "The attendance register was not found.");
+        if (register.status !== AttendanceRegisterStatus.OPEN) {
+          throw storeError("REGISTER_FINALIZED", "Finalized registers cannot accept new records.");
+        }
+        if (!input.records || input.records.length === 0) {
+          throw storeError("INVALID_RELATIONSHIP", "At least one attendance record is required.");
+        }
+        const created: AttendanceRecordData[] = [];
+        for (const entry of input.records) {
+          const singleInput: RecordAttendanceInput = {
+            schoolId: input.schoolId,
+            actorUserId: input.actorUserId,
+            requestId: input.requestId,
+            registerId: input.registerId,
+            studentId: entry.studentId,
+            staffId: entry.staffId,
+            status: entry.status,
+            reasonId: entry.reasonId,
+            arrivalAt: entry.arrivalAt,
+            departureAt: entry.departureAt,
+          };
+          await validateAttendee(tx, singleInput, register);
+          await validateAttendanceFields(tx, singleInput);
+          const record = await tx.attendanceRecord.create({
+            data: {
+              schoolId: input.schoolId,
+              registerId: input.registerId,
+              studentId: entry.studentId ?? null,
+              staffId: entry.staffId ?? null,
+              status: entry.status,
+              reasonId: entry.reasonId ?? null,
+              arrivalAt: entry.arrivalAt ? timeOnly(entry.arrivalAt) : null,
+              departureAt: entry.departureAt ? timeOnly(entry.departureAt) : null,
+              markedByUserId: input.actorUserId,
+            },
+            select: attendanceRecordSelect,
+          });
+          created.push(record);
+        }
+        await audit(tx, input, "ATTENDANCE_BULK_RECORDED", input.registerId);
+        return created;
       }),
     );
   }
@@ -501,6 +745,217 @@ export class PrismaSchoolOperationsStore implements SchoolOperationsStore {
     });
   }
 
+  async getStudentAttendanceHistory(
+    schoolId: string,
+    studentId: string,
+    query: StudentAttendanceHistoryQuery,
+  ): Promise<OperationsPage<StudentAttendanceHistoryRecord> | null> {
+    const student = await this.prisma.student.findFirst({
+      where: { schoolId, id: studentId },
+      select: { id: true },
+    });
+    if (!student) return null;
+    const where: Prisma.AttendanceRecordWhereInput = {
+      schoolId,
+      studentId,
+      ...(query.status ? { status: query.status } : {}),
+      register: {
+        schoolId,
+        ...(query.type ? { type: query.type } : {}),
+      ...(query.from || query.to
+        ? {
+            date: {
+              ...(query.from ? { gte: dateOnly(query.from) } : {}),
+              ...(query.to ? { lte: dateOnly(query.to) } : {}),
+            },
+          }
+        : {}),
+      },
+    };
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.attendanceRecord.findMany({
+        where,
+        select: {
+          ...attendanceRecordSelect,
+          register: {
+            select: {
+              date: true,
+              type: true,
+              classId: true,
+              streamId: true,
+              timetableLessonId: true,
+            },
+          },
+          reason: { select: { name: true } },
+        },
+        orderBy: [{ register: { date: "desc" } }, { markedAt: "desc" }, { id: "asc" }],
+        skip: query.offset,
+        take: query.limit,
+      }),
+      this.prisma.attendanceRecord.count({ where }),
+    ]);
+    return {
+      items: items.map((row) => ({
+        ...row,
+        date: row.register.date,
+        type: row.register.type,
+        classId: row.register.classId,
+        streamId: row.register.streamId,
+        timetableLessonId: row.register.timetableLessonId,
+        reasonName: row.reason?.name ?? null,
+      })),
+      total,
+    };
+  }
+
+  async attendanceClassSummary(
+    schoolId: string,
+    query: AttendanceClassSummaryQuery,
+  ): Promise<AttendanceClassSummaryRow[]> {
+    const classFilter = query.classId
+      ? Prisma.sql`AND r.class_id = ${query.classId}::uuid`
+      : Prisma.empty;
+    const streamFilter = query.streamId
+      ? Prisma.sql`AND r.stream_id = ${query.streamId}::uuid`
+      : Prisma.empty;
+    const typeFilter = query.type
+      ? Prisma.sql`AND r.type = ${query.type}::"AttendanceRegisterType"`
+      : Prisma.sql`AND r.type IN ('STUDENT_DAILY', 'STUDENT_LESSON')`;
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        class_id: string;
+        stream_id: string | null;
+        enrolled_count: number;
+        finalized_sessions: number;
+        total_sessions: number;
+        present_count: number;
+        absent_count: number;
+        late_count: number;
+        early_departure_count: number;
+      }>
+    >(Prisma.sql`
+      SELECT
+        r.class_id,
+        r.stream_id,
+        (
+          SELECT count(*)::int
+          FROM student_placements sp
+          WHERE sp.school_id = ${schoolId}::uuid
+            AND sp.academic_year_id = ${query.academicYearId}::uuid
+            AND sp.class_id = r.class_id
+            AND (r.stream_id IS NULL OR sp.stream_id = r.stream_id)
+            AND sp.ended_at IS NULL
+        ) AS enrolled_count,
+        count(DISTINCT CASE WHEN r.status = 'FINALIZED' THEN r.id END)::int AS finalized_sessions,
+        count(DISTINCT r.id)::int AS total_sessions,
+        count(CASE WHEN ar.status = 'PRESENT' THEN 1 END)::int AS present_count,
+        count(CASE WHEN ar.status = 'ABSENT' THEN 1 END)::int AS absent_count,
+        count(CASE WHEN ar.status = 'LATE' THEN 1 END)::int AS late_count,
+        count(CASE WHEN ar.status = 'EARLY_DEPARTURE' THEN 1 END)::int AS early_departure_count
+      FROM attendance_registers r
+      LEFT JOIN attendance_records ar
+        ON ar.school_id = r.school_id AND ar.register_id = r.id
+      WHERE r.school_id = ${schoolId}::uuid
+        AND r.academic_year_id = ${query.academicYearId}::uuid
+        AND r.date >= ${query.from}::date
+        AND r.date <= ${query.to}::date
+        AND r.class_id IS NOT NULL
+        ${classFilter}
+        ${streamFilter}
+        ${typeFilter}
+      GROUP BY r.class_id, r.stream_id
+      ORDER BY r.class_id, r.stream_id NULLS FIRST
+    `);
+    return rows.map((row) => ({
+      classId: row.class_id,
+      streamId: row.stream_id,
+      enrolledCount: row.enrolled_count,
+      finalizedSessions: row.finalized_sessions,
+      totalSessions: row.total_sessions,
+      presentCount: row.present_count,
+      absentCount: row.absent_count,
+      lateCount: row.late_count,
+      earlyDepartureCount: row.early_departure_count,
+    }));
+  }
+
+  async attendanceTermSummary(
+    schoolId: string,
+    query: AttendanceTermSummaryQuery,
+  ): Promise<AttendanceTermSummaryRow | null> {
+    const term = await this.prisma.term.findFirst({
+      where: { schoolId, academicYearId: query.academicYearId, id: query.termId },
+      select: { startsOn: true, endsOn: true },
+    });
+    if (!term) return null;
+    const from = term.startsOn.toISOString().slice(0, 10);
+    const to = term.endsOn.toISOString().slice(0, 10);
+    const classFilter = query.classId
+      ? Prisma.sql`AND r.class_id = ${query.classId}::uuid`
+      : Prisma.empty;
+    const streamFilter = query.streamId
+      ? Prisma.sql`AND r.stream_id = ${query.streamId}::uuid`
+      : Prisma.empty;
+    const typeFilter = query.type
+      ? Prisma.sql`AND r.type = ${query.type}::"AttendanceRegisterType"`
+      : Prisma.sql`AND r.type IN ('STUDENT_DAILY', 'STUDENT_LESSON')`;
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        enrolled_count: number;
+        finalized_sessions: number;
+        total_sessions: number;
+        present_count: number;
+        absent_count: number;
+        late_count: number;
+        early_departure_count: number;
+      }>
+    >(Prisma.sql`
+      SELECT
+        (
+          SELECT count(*)::int
+          FROM student_placements sp
+          WHERE sp.school_id = ${schoolId}::uuid
+            AND sp.academic_year_id = ${query.academicYearId}::uuid
+            ${query.classId ? Prisma.sql`AND sp.class_id = ${query.classId}::uuid` : Prisma.empty}
+            ${query.streamId ? Prisma.sql`AND sp.stream_id = ${query.streamId}::uuid` : Prisma.empty}
+            AND sp.ended_at IS NULL
+        ) AS enrolled_count,
+        count(DISTINCT CASE WHEN r.status = 'FINALIZED' THEN r.id END)::int AS finalized_sessions,
+        count(DISTINCT r.id)::int AS total_sessions,
+        count(CASE WHEN ar.status = 'PRESENT' THEN 1 END)::int AS present_count,
+        count(CASE WHEN ar.status = 'ABSENT' THEN 1 END)::int AS absent_count,
+        count(CASE WHEN ar.status = 'LATE' THEN 1 END)::int AS late_count,
+        count(CASE WHEN ar.status = 'EARLY_DEPARTURE' THEN 1 END)::int AS early_departure_count
+      FROM attendance_registers r
+      LEFT JOIN attendance_records ar
+        ON ar.school_id = r.school_id AND ar.register_id = r.id
+      WHERE r.school_id = ${schoolId}::uuid
+        AND r.academic_year_id = ${query.academicYearId}::uuid
+        AND r.date >= ${from}::date
+        AND r.date <= ${to}::date
+        AND r.class_id IS NOT NULL
+        ${classFilter}
+        ${streamFilter}
+        ${typeFilter}
+    `);
+    const row = rows[0];
+    if (!row) return null;
+    return {
+      termId: query.termId,
+      from,
+      to,
+      classId: query.classId ?? null,
+      streamId: query.streamId ?? null,
+      enrolledCount: row.enrolled_count,
+      finalizedSessions: row.finalized_sessions,
+      totalSessions: row.total_sessions,
+      presentCount: row.present_count,
+      absentCount: row.absent_count,
+      lateCount: row.late_count,
+      earlyDepartureCount: row.early_departure_count,
+    };
+  }
+
   async createRoom(input: Parameters<SchoolOperationsStore["createRoom"]>[0]): Promise<RoomRecord> {
     return this.guard(() =>
       this.transaction(async (tx) => {
@@ -580,9 +1035,19 @@ export class PrismaSchoolOperationsStore implements SchoolOperationsStore {
     );
   }
 
-  async listTimetables(schoolId: string, academicYearId: string): Promise<TimetableRecord[]> {
+  async listTimetables(
+    schoolId: string,
+    query?: string | TimetableQuery,
+  ): Promise<TimetableRecord[]> {
+    const filter = typeof query === "string" ? { academicYearId: query } : query ?? {};
     return this.prisma.timetable.findMany({
-      where: { schoolId, academicYearId },
+      where: {
+        schoolId,
+        ...(filter.academicYearId ? { academicYearId: filter.academicYearId } : {}),
+        ...(filter.status ? { status: filter.status } : {}),
+        ...(filter.classId ? { lessons: { some: { classId: filter.classId } } } : {}),
+        ...(filter.staffId ? { lessons: { some: { staffId: filter.staffId } } } : {}),
+      },
       select: timetableSelect,
       orderBy: [{ createdAt: "desc" }, { id: "asc" }],
     });
@@ -622,14 +1087,24 @@ export class PrismaSchoolOperationsStore implements SchoolOperationsStore {
   async listLessons(
     schoolId: string,
     timetableId: string,
+    query?: Weekday | TimetableLessonQuery,
   ): Promise<TimetableLessonRecord[] | null> {
     const timetable = await this.prisma.timetable.findFirst({
       where: { schoolId, id: timetableId },
       select: { id: true },
     });
     if (!timetable) return null;
+    const filter = typeof query === "string" ? { weekday: query } : query ?? {};
     return this.prisma.timetableLesson.findMany({
-      where: { schoolId, timetableId },
+      where: {
+        schoolId,
+        timetableId,
+        ...(filter.weekday ? { weekday: filter.weekday } : {}),
+        ...(filter.classId ? { classId: filter.classId } : {}),
+        ...(filter.streamId ? { streamId: filter.streamId } : {}),
+        ...(filter.staffId ? { staffId: filter.staffId } : {}),
+        ...(filter.roomId ? { roomId: filter.roomId } : {}),
+      },
       select: lessonSelect,
       orderBy: [{ weekday: "asc" }, { startPeriod: { position: "asc" } }, { id: "asc" }],
     });
@@ -711,6 +1186,148 @@ export class PrismaSchoolOperationsStore implements SchoolOperationsStore {
         });
       }),
     );
+  }
+
+  async getTimetable(schoolId: string, timetableId: string): Promise<TimetableRecord | null> {
+    return this.prisma.timetable.findFirst({
+      where: { schoolId, id: timetableId },
+      select: timetableSelect,
+    });
+  }
+
+  async updateTimetable(input: UpdateTimetableInput): Promise<TimetableRecord | null> {
+    return this.guard(() =>
+      this.transaction(async (tx) => {
+        await lockTimetable(tx, input.schoolId, input.timetableId);
+        await requireActiveSchool(tx, input.schoolId);
+        const current = await tx.timetable.findFirst({
+          where: { schoolId: input.schoolId, id: input.timetableId },
+          select: { id: true, status: true },
+        });
+        if (!current) return null;
+        if (current.status === TimetableStatus.PUBLISHED) {
+          throw storeError("TIMETABLE_PUBLISHED", "Published timetables cannot be renamed.");
+        }
+        const updated = await tx.timetable.update({
+          where: { id: current.id },
+          data: {
+            name: input.name,
+            nameKey: normalizeName(input.name),
+          },
+          select: timetableSelect,
+        });
+        await audit(tx, input, "TIMETABLE_UPDATED", updated.id);
+        return updated;
+      }),
+    );
+  }
+
+  async deleteTimetable(input: Parameters<SchoolOperationsStore["deleteTimetable"]>[0]): Promise<boolean> {
+    return this.transaction(async (tx) => {
+      await lockTimetable(tx, input.schoolId, input.timetableId);
+      await requireActiveSchool(tx, input.schoolId);
+      const existing = await tx.timetable.findFirst({
+        where: { schoolId: input.schoolId, id: input.timetableId },
+        select: { id: true, status: true },
+      });
+      if (!existing) return false;
+      if (existing.status === TimetableStatus.PUBLISHED) {
+        throw storeError("TIMETABLE_PUBLISHED", "Published timetables cannot be deleted.");
+      }
+      const removed = await tx.timetable.deleteMany({
+        where: { schoolId: input.schoolId, id: input.timetableId },
+      });
+      await audit(tx, input, "TIMETABLE_DELETED", input.timetableId);
+      return removed.count === 1;
+    });
+  }
+
+  async deleteLesson(input: Parameters<SchoolOperationsStore["deleteLesson"]>[0]): Promise<boolean> {
+    return this.guard(() =>
+      this.transaction(async (tx) => {
+        const lesson = await tx.timetableLesson.findFirst({
+          where: { schoolId: input.schoolId, id: input.lessonId, timetableId: input.timetableId },
+          select: { id: true, timetableId: true },
+        });
+        if (!lesson) return false;
+        await lockTimetable(tx, input.schoolId, lesson.timetableId);
+        await requireActiveSchool(tx, input.schoolId);
+        const timetable = await tx.timetable.findFirst({
+          where: { schoolId: input.schoolId, id: lesson.timetableId },
+          select: { status: true },
+        });
+        if (!timetable || timetable.status !== TimetableStatus.DRAFT) {
+          throw storeError("TIMETABLE_PUBLISHED", "Unpublish the timetable before removing a lesson.");
+        }
+        const removed = await tx.timetableLesson.deleteMany({
+          where: { schoolId: input.schoolId, id: lesson.id, timetableId: lesson.timetableId },
+        });
+        await audit(tx, input, "TIMETABLE_LESSON_DELETED", lesson.id);
+        return removed.count === 1;
+      }),
+    );
+  }
+
+  async validateTimetable(
+    schoolId: string,
+    timetableId: string,
+  ): Promise<TimetableValidationResult | null> {
+    const timetable = await this.prisma.timetable.findFirst({
+      where: { schoolId, id: timetableId },
+      select: { id: true },
+    });
+    if (!timetable) return null;
+    const errors = await this.prisma.timetableLesson.findMany({
+      where: { schoolId, timetableId },
+      select: {
+        id: true,
+        classId: true,
+        streamId: true,
+        staffId: true,
+        roomId: true,
+        weekday: true,
+        startPeriod: { select: { startsAt: true } },
+        endPeriod: { select: { endsAt: true } },
+      },
+    });
+    const issueList: TimetableValidationResult["errors"] = [];
+    for (const lesson of errors) {
+      const candidate: TimetableSlot = {
+        weekday: lesson.weekday,
+        classId: lesson.classId,
+        streamId: lesson.streamId,
+        staffId: lesson.staffId,
+        roomId: lesson.roomId,
+        startsAt: lesson.startPeriod.startsAt,
+        endsAt: lesson.endPeriod.endsAt,
+      };
+      const conflicts = await this.prisma.timetableLesson.findMany({
+        where: {
+          schoolId,
+          timetableId,
+          id: { not: lesson.id },
+          OR: [
+            { staffId: lesson.staffId },
+            { classId: lesson.classId, streamId: lesson.streamId },
+            { roomId: lesson.roomId },
+          ],
+        },
+        select: { id: true, weekday: true, startPeriod: { select: { startsAt: true } }, endPeriod: { select: { endsAt: true } }, classId: true, streamId: true, staffId: true, roomId: true },
+      });
+      const existingSlots: TimetableSlot[] = conflicts.map((entry) => ({
+        weekday: entry.weekday,
+        classId: entry.classId,
+        streamId: entry.streamId,
+        staffId: entry.staffId,
+        roomId: entry.roomId,
+        startsAt: entry.startPeriod.startsAt,
+        endsAt: entry.endPeriod.endsAt,
+      }));
+      if (timetableConflict(candidate, existingSlots)) {
+        issueList.push({ lessonId: lesson.id, code: "CONFLICT", message: "Lesson conflicts with another timetable entry." });
+      }
+    }
+    return { valid: issueList.length === 0, errors: issueList };
   }
 
   async publishTimetable(

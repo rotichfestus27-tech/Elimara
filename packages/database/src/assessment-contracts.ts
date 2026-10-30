@@ -12,6 +12,8 @@ export type AssessmentPageQuery = {
   academicYearId?: string;
   termId?: string;
   classId?: string;
+  streamId?: string;
+  classSubjectAssignmentId?: string;
   status?: AssessmentStatus;
 };
 export type GradeBandRecord = {
@@ -63,7 +65,16 @@ export type AssessmentResultRecord = {
   gradeLabel: string | null;
   enteredAt: Date | null;
   updatedAt: Date;
+  exempted: boolean;
+  exemptionReason: string | null;
 };
+export type ResultPageQuery = {
+  limit: number;
+  offset: number;
+  studentId?: string;
+  missingOnly?: boolean;
+};
+
 export type ResultPage = { items: AssessmentResultRecord[]; total: number; missingCount: number };
 export type ReportCardItem = {
   assessmentId: string;
@@ -117,6 +128,12 @@ export type CorrectAssessmentResultInput = AssessmentContext & {
   score: string;
 };
 
+export type ExemptResultInput = AssessmentContext & {
+  assessmentId: string;
+  studentId: string;
+  exemptionReason: string;
+};
+
 export interface AssessmentStore {
   listGradingScales(schoolId: string): Promise<GradingScaleRecord[]>;
   createGradingScale(input: CreateGradingScaleInput): Promise<GradingScaleRecord>;
@@ -146,10 +163,12 @@ export interface AssessmentStore {
   listResults(
     schoolId: string,
     assessmentId: string,
-    query: { limit: number; offset: number },
+    query: ResultPageQuery,
   ): Promise<ResultPage | null>;
+  getResult(schoolId: string, assessmentId: string, studentId: string): Promise<AssessmentResultRecord | null>;
   enterResults(input: EnterResultsInput): Promise<AssessmentResultRecord[]>;
   correctResult(input: CorrectAssessmentResultInput): Promise<AssessmentResultRecord | null>;
+  exemptResult(input: ExemptResultInput): Promise<AssessmentResultRecord | null>;
   reportCard(
     schoolId: string,
     studentId: string,

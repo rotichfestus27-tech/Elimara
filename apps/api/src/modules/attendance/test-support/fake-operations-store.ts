@@ -65,11 +65,25 @@ export class FakeOperationsStore implements SchoolOperationsStore {
       if (!this.belongs(item.id, schoolId)) return false;
       if (query.type && item.type !== query.type) return false;
       if (query.classId && item.classId !== query.classId) return false;
+      if (query.streamId && item.streamId !== query.streamId) return false;
+      if (query.academicYearId && item.academicYearId !== query.academicYearId) return false;
       if (query.from && item.date < new Date(`${query.from}T00:00:00Z`)) return false;
       if (query.to && item.date > new Date(`${query.to}T00:00:00Z`)) return false;
       return true;
     });
     return { items: all.slice(query.offset, query.offset + query.limit), total: all.length };
+  }
+
+  async getAttendanceRegister(schoolId: string, registerId: string) {
+    const register = this.registers.get(registerId);
+    if (!register || !this.belongs(registerId, schoolId)) return null;
+    return register;
+  }
+
+  async getAttendanceRoster(schoolId: string, registerId: string) {
+    const register = this.registers.get(registerId);
+    if (!register || !this.belongs(registerId, schoolId)) return null;
+    return [];
   }
 
   async createAttendanceRegister(
@@ -145,6 +159,33 @@ export class FakeOperationsStore implements SchoolOperationsStore {
     return item;
   }
 
+  async bulkRecordAttendance(
+    input: Parameters<SchoolOperationsStore["bulkRecordAttendance"]>[0],
+  ): Promise<AttendanceRecordData[]> {
+    return Promise.all(
+      input.records.map(async (record) =>
+        this.recordAttendance({
+          schoolId: input.schoolId,
+          actorUserId: input.actorUserId,
+          requestId: input.requestId,
+          registerId: input.registerId,
+          studentId: record.studentId,
+          staffId: record.staffId,
+          status: record.status,
+          reasonId: record.reasonId,
+          arrivalAt: record.arrivalAt,
+          departureAt: record.departureAt,
+        }),
+      ),
+    );
+  }
+
+  async markAllPresent(input: Parameters<SchoolOperationsStore["markAllPresent"]>[0]) {
+    const register = this.registers.get(input.registerId);
+    if (!register || !this.belongs(input.registerId, input.schoolId)) return [];
+    return [];
+  }
+
   async correctAttendance(input: Parameters<SchoolOperationsStore["correctAttendance"]>[0]) {
     const item = this.records.get(input.recordId);
     if (!item || item.registerId !== input.registerId || !this.belongs(item.id, input.schoolId))
@@ -172,8 +213,45 @@ export class FakeOperationsStore implements SchoolOperationsStore {
     return updated;
   }
 
+  async getStudentAttendanceHistory(
+    schoolId: string,
+    studentId: string,
+    _query: Parameters<SchoolOperationsStore["getStudentAttendanceHistory"]>[2],
+  ) {
+    const items = [...this.records.values()]
+      .filter((record) => {
+        const register = this.registers.get(record.registerId);
+        return (
+          register &&
+          this.belongs(record.registerId, schoolId) &&
+          (record.studentId === studentId || record.staffId === studentId)
+        );
+      })
+      .map((record) => {
+        const register = this.registers.get(record.registerId)!;
+        return {
+          ...record,
+          date: register.date,
+          type: register.type,
+          classId: register.classId,
+          streamId: register.streamId,
+          timetableLessonId: register.timetableLessonId,
+          reasonName: null,
+        };
+      });
+    return { items, total: items.length };
+  }
+
   async attendanceSummary() {
     return [];
+  }
+
+  async attendanceClassSummary() {
+    return [];
+  }
+
+  async attendanceTermSummary() {
+    return null;
   }
 
   async listPeriods() {
@@ -231,10 +309,19 @@ export class FakeOperationsStore implements SchoolOperationsStore {
     return item;
   }
 
-  async listTimetables(schoolId: string, academicYearId: string) {
-    return [...this.timetables.values()].filter(
-      (item) => item.academicYearId === academicYearId && this.belongs(item.id, schoolId),
-    );
+  async listTimetables(schoolId: string, query?: string | Parameters<SchoolOperationsStore["listTimetables"]>[1]) {
+    if (typeof query === "string") {
+      return [...this.timetables.values()].filter(
+        (item) => item.academicYearId === query && this.belongs(item.id, schoolId),
+      );
+    }
+    return [...this.timetables.values()].filter((item) => this.belongs(item.id, schoolId));
+  }
+
+  async getTimetable(schoolId: string, timetableId: string) {
+    const timetable = this.timetables.get(timetableId);
+    if (!timetable || !this.belongs(timetableId, schoolId)) return null;
+    return timetable;
   }
 
   async createTimetable(input: Parameters<SchoolOperationsStore["createTimetable"]>[0]) {
@@ -250,6 +337,27 @@ export class FakeOperationsStore implements SchoolOperationsStore {
     };
     this.timetables.set(item.id, item);
     return item;
+  }
+
+  async updateTimetable(input: Parameters<SchoolOperationsStore["updateTimetable"]>[0]) {
+    const item = this.timetables.get(input.timetableId);
+    if (!item || !this.belongs(item.id, input.schoolId)) return null;
+    const updated = { ...item, name: input.name, updatedAt: new Date() };
+    this.timetables.set(item.id, updated);
+    return updated;
+  }
+
+  async deleteTimetable(input: Parameters<SchoolOperationsStore["deleteTimetable"]>[0]) {
+    const item = this.timetables.get(input.timetableId);
+    if (!item || !this.belongs(item.id, input.schoolId)) return false;
+    this.timetables.delete(item.id);
+    return true;
+  }
+
+  async validateTimetable(schoolId: string, timetableId: string) {
+    const timetable = this.timetables.get(timetableId);
+    if (!timetable || !this.belongs(timetableId, schoolId)) return null;
+    return { valid: true, errors: [] };
   }
 
   async listLessons(schoolId: string, timetableId: string) {
@@ -283,6 +391,13 @@ export class FakeOperationsStore implements SchoolOperationsStore {
     const updated = { ...item, ...input, updatedAt: new Date() };
     this.lessons.set(item.id, updated);
     return updated;
+  }
+
+  async deleteLesson(input: Parameters<SchoolOperationsStore["deleteLesson"]>[0]) {
+    const item = this.lessons.get(input.lessonId);
+    if (!item || !this.belongs(item.id, input.schoolId)) return false;
+    this.lessons.delete(item.id);
+    return true;
   }
 
   async publishTimetable(input: Parameters<SchoolOperationsStore["publishTimetable"]>[0]) {

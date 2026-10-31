@@ -231,7 +231,7 @@ export function TimetablePage() {
   const staffQuery = useSchoolList<StaffMemberRecord>("/staff", {
     limit: 100,
     status: "ACTIVE",
-    sortBy: "givenName",
+    sortBy: "familyName",
   }, { enabled: canReadTimetable && canReadStaff });
   const staffList = staffQuery.data?.data ?? [];
 

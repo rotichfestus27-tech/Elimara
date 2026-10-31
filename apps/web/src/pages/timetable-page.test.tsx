@@ -189,6 +189,7 @@ function mockTimetableRequests({
     }
 
     if (pathname.endsWith("/staff")) {
+      expect(url.searchParams.get("sortBy")).toBe("familyName");
       return jsonResponse(200, {
         data: [
           {

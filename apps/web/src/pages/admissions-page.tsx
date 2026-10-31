@@ -1482,21 +1482,21 @@ function AdmitStudentDialog({
 
   // Load active academic years
   const yearsQuery = useSchoolList<AcademicYear>(
-    "/configuration/academic-years",
+    "/academic-years",
     { limit: 100 },
     { enabled: open },
   );
 
   // Load classes belonging to selected academic year
   const classesQuery = useSchoolList<ClassRecord>(
-    "/configuration/classes",
+    "/classes",
     { academicYearId: academicYearId || undefined, limit: 100 },
     { enabled: open && Boolean(academicYearId) },
   );
 
   // Load streams belonging to selected class
   const streamsQuery = useSchoolList<StreamRecord>(
-    "/configuration/streams",
+    "/streams",
     { classId: classId || undefined, limit: 100 },
     { enabled: open && Boolean(classId) },
   );

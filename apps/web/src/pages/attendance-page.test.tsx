@@ -128,6 +128,7 @@ function mockAttendanceRequests({
 
     if (pathname.endsWith("/staff")) {
       staffListRequests += 1;
+      expect(url.searchParams.get("sortBy")).toBe("familyName");
       if (failStaffList && staffListRequests === 1) {
         return jsonResponse(503, {
           error: { message: "Staff records are temporarily unavailable." },

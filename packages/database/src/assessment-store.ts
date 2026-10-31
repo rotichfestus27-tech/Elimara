@@ -103,8 +103,6 @@ const resultSelect = {
   gradeLabel: true,
   enteredAt: true,
   updatedAt: true,
-  exempted: true,
-  exemptionReason: true,
   student: { select: { admissionNumber: true, givenName: true, familyName: true } },
 } satisfies Prisma.AssessmentResultSelect;
 
@@ -528,7 +526,7 @@ export class PrismaAssessmentStore implements AssessmentStore {
       async (tx, assessment) => {
         const [missing, total] = await Promise.all([
           tx.assessmentResult.count({
-            where: { schoolId: input.schoolId, assessmentId: assessment.id, score: null, exempted: false },
+            where: { schoolId: input.schoolId, assessmentId: assessment.id, score: null },
           }),
           tx.assessmentResult.count({
             where: { schoolId: input.schoolId, assessmentId: assessment.id },
@@ -560,7 +558,7 @@ export class PrismaAssessmentStore implements AssessmentStore {
       "ASSESSMENT_PUBLISHED",
       async (tx, assessment) => {
         const missing = await tx.assessmentResult.count({
-          where: { schoolId: input.schoolId, assessmentId: assessment.id, score: null, exempted: false },
+          where: { schoolId: input.schoolId, assessmentId: assessment.id, score: null },
         });
         if (missing > 0) {
           throw storeError(
@@ -600,7 +598,7 @@ export class PrismaAssessmentStore implements AssessmentStore {
       schoolId,
       assessmentId,
       ...(query.studentId ? { studentId: query.studentId } : {}),
-      ...(query.missingOnly ? { score: null, exempted: false } : {}),
+      ...(query.missingOnly ? { score: null } : {}),
     };
     const [items, total, missingCount] = await this.prisma.$transaction([
       this.prisma.assessmentResult.findMany({
@@ -616,7 +614,7 @@ export class PrismaAssessmentStore implements AssessmentStore {
       }),
       this.prisma.assessmentResult.count({ where }),
       this.prisma.assessmentResult.count({
-        where: { schoolId, assessmentId, score: null, exempted: false },
+        where: { schoolId, assessmentId, score: null },
       }),
     ]);
     return { items: items.map(mapResult), total, missingCount };
@@ -819,8 +817,6 @@ export class PrismaAssessmentStore implements AssessmentStore {
             percentage: new Prisma.Decimal(calculated.percentage),
             gradeCode: calculated.gradeCode,
             gradeLabel: calculated.gradeLabel,
-            exempted: false,
-            exemptionReason: null,
             updatedByUserId: input.actorUserId,
           },
           select: resultSelect,
@@ -841,67 +837,8 @@ export class PrismaAssessmentStore implements AssessmentStore {
     );
   }
 
-  async exemptResult(input: ExemptResultInput): Promise<AssessmentResultRecord | null> {
-    if (!input.exemptionReason || input.exemptionReason.trim().length === 0) {
-      throw storeError("INVALID_SCORE", "An exemption reason is required.");
-    }
-    if (input.exemptionReason.trim().length > 200) {
-      throw storeError("INVALID_SCORE", "Exemption reason must not exceed 200 characters.");
-    }
-    return this.guard(() =>
-      this.transaction(async (tx) => {
-        await lockAssessment(tx, input.schoolId, input.assessmentId);
-        await requireActiveSchool(tx, input.schoolId);
-        const assessment = await tx.assessment.findFirst({
-          where: { schoolId: input.schoolId, id: input.assessmentId },
-          select: { id: true, status: true },
-        });
-        if (!assessment) return null;
-        if (!assessmentCanEnterMarks(assessment.status)) {
-          throw storeError(
-            "INVALID_STATUS",
-            "Exemptions can only be set while the assessment is open or in moderation.",
-          );
-        }
-        const result = await tx.assessmentResult.findFirst({
-          where: {
-            schoolId: input.schoolId,
-            assessmentId: assessment.id,
-            studentId: input.studentId,
-          },
-          select: resultSelect,
-        });
-        if (!result) return null;
-        const beforeData = resultSnapshot(result);
-        const updated = await tx.assessmentResult.update({
-          where: { id: result.id },
-          data: {
-            exempted: true,
-            exemptionReason: input.exemptionReason.trim(),
-            score: null,
-            percentage: null,
-            gradeCode: null,
-            gradeLabel: null,
-            updatedByUserId: input.actorUserId,
-          },
-          select: resultSelect,
-        });
-        await tx.assessmentResultRevision.create({
-          data: {
-            schoolId: input.schoolId,
-            resultId: result.id,
-            beforeData,
-            afterData: resultSnapshot(updated),
-            actorUserId: input.actorUserId,
-            requestId: input.requestId,
-          },
-        });
-        await audit(tx, input, "ASSESSMENT_RESULT_EXEMPTED", result.id, {
-          exemptionReason: input.exemptionReason.trim(),
-        });
-        return mapResult(updated);
-      }),
-    );
+  async exemptResult(_input: ExemptResultInput): Promise<AssessmentResultRecord | null> {
+    throw storeError("INVALID_STATUS", "Result exemptions are not supported in this database schema version.");
   }
 
   async reportCard(
@@ -1176,8 +1113,8 @@ function mapResult(
     gradeLabel: row.gradeLabel,
     enteredAt: row.enteredAt,
     updatedAt: row.updatedAt,
-    exempted: row.exempted,
-    exemptionReason: row.exemptionReason,
+    exempted: false,
+    exemptionReason: null,
   };
 }
 
